@@ -1,0 +1,194 @@
+name: Bias Detection
+
+on:
+  workflow_run:
+    workflows: [Model Training]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      model_artifact:
+        description: "GitHub artifact name containing models (blank = use local)"
+        required: false
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  check-bias:
+    name: Bias Detection (6 Dimensions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-bias-${{ runner.os }}-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: pip-bias-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          pip install --quiet \
+            xgboost scikit-learn pandas numpy scipy pyarrow \
+            fairlearn
+
+      # ── Download models from artifact if specified ─────────────────────────
+
+      - name: Download trained models
+        if: ${{ github.event.inputs.model_artifact != '' || github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.model_artifact || format('trained-models-{0}', github.event.workflow_run.head_sha) }}
+          path: backend/models/
+        continue-on-error: true  # fall back to local models if artifact missing
+
+      - name: Generate training data for eval
+        working-directory: backend
+        run: |
+          python -c "
+          from ml.data_generator import generate_all
+          generate_all(verbose=False)
+          print('Training data ready for bias analysis')
+          "
+
+      # ── Run bias detection across all 3 models ────────────────────────────
+
+      - name: Detect bias — Confidence Calibrator
+        id: bias_calibrator
+        working-directory: backend
+        run: |
+          python -c "
+          import json, sys
+          from ml.model_analysis import detect_bias
+          result = detect_bias('confidence_calibrator')
+          print(json.dumps(result, indent=2))
+          severity = result.get('bias_severity', 'NONE')
+          max_disp = result.get('max_disparity', 0)
+          print(f'SEVERITY={severity} MAX_DISPARITY={max_disp:.4f}', file=sys.stderr)
+          if severity == 'HIGH':
+              sys.exit(1)
+          " 2>&1 | tee /tmp/bias_calibrator.json || echo "BIAS_HIGH=true" >> $GITHUB_ENV
+          echo "severity=$(grep SEVERITY /tmp/bias_calibrator.json | grep -oP 'SEVERITY=\K\S+')" >> $GITHUB_OUTPUT
+          echo "max_disparity=$(grep MAX_DISPARITY /tmp/bias_calibrator.json | grep -oP 'MAX_DISPARITY=\K[\d.]+')" >> $GITHUB_OUTPUT
+
+      - name: Detect bias — Reward Predictor
+        id: bias_reward
+        working-directory: backend
+        run: |
+          python -c "
+          import json, sys
+          from ml.model_analysis import detect_bias
+          result = detect_bias('reward_predictor')
+          print(json.dumps(result, indent=2))
+          severity = result.get('bias_severity', 'NONE')
+          max_disp = result.get('max_disparity', 0)
+          print(f'SEVERITY={severity} MAX_DISPARITY={max_disp:.4f}', file=sys.stderr)
+          if severity == 'HIGH':
+              sys.exit(1)
+          " 2>&1 | tee /tmp/bias_reward.json || echo "BIAS_HIGH=true" >> $GITHUB_ENV
+          echo "severity=$(grep SEVERITY /tmp/bias_reward.json | grep -oP 'SEVERITY=\K\S+')" >> $GITHUB_OUTPUT
+
+      - name: Detect bias — Options Pricer
+        id: bias_options
+        working-directory: backend
+        run: |
+          python -c "
+          import json, sys
+          from ml.model_analysis import detect_bias
+          result = detect_bias('options_pricer')
+          print(json.dumps(result, indent=2))
+          severity = result.get('bias_severity', 'NONE')
+          max_disp = result.get('max_disparity', 0)
+          print(f'SEVERITY={severity} MAX_DISPARITY={max_disp:.4f}', file=sys.stderr)
+          if severity == 'HIGH':
+              sys.exit(1)
+          " 2>&1 | tee /tmp/bias_options.json || echo "BIAS_HIGH=true" >> $GITHUB_ENV
+          echo "severity=$(grep SEVERITY /tmp/bias_options.json | grep -oP 'SEVERITY=\K\S+')" >> $GITHUB_OUTPUT
+
+      # ── Aggregate gate ─────────────────────────────────────────────────────
+
+      - name: Fail if any HIGH severity bias detected
+        if: ${{ env.BIAS_HIGH == 'true' }}
+        run: |
+          echo "::error::HIGH severity bias detected. Deployment blocked. Review bias reports above."
+          exit 1
+
+      # ── Upload bias reports ────────────────────────────────────────────────
+
+      - name: Upload bias reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bias-reports-${{ github.run_id }}
+          path: /tmp/bias_*.json
+          retention-days: 90
+
+      # ── Job summary ────────────────────────────────────────────────────────
+
+      - name: Write summary
+        if: always()
+        run: |
+          echo "## Bias Detection Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | Severity | Max Disparity |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Confidence Calibrator | ${{ steps.bias_calibrator.outputs.severity || 'N/A' }} | ${{ steps.bias_calibrator.outputs.max_disparity || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reward Predictor | ${{ steps.bias_reward.outputs.severity || 'N/A' }} | N/A |" >> $GITHUB_STEP_SUMMARY
+          echo "| Options Pricer | ${{ steps.bias_options.outputs.severity || 'N/A' }} | N/A |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Dimensions checked**: market_regime, action, VIX bucket, sentiment bucket" >> $GITHUB_STEP_SUMMARY
+          echo "**Thresholds**: MEDIUM > 5% disparity | HIGH > 10% disparity" >> $GITHUB_STEP_SUMMARY
+
+      # ── Notifications ─────────────────────────────────────────────────────
+
+      - name: Notify — bias detected (non-blocking)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":mag: *Bias Detection Passed* — no HIGH severity bias",
+              "attachments": [{
+                "color": "#36a64f",
+                "fields": [
+                  {"title": "Calibrator", "value": "${{ steps.bias_calibrator.outputs.severity || 'NONE' }}", "short": true},
+                  {"title": "Reward", "value": "${{ steps.bias_reward.outputs.severity || 'NONE' }}", "short": true},
+                  {"title": "Options", "value": "${{ steps.bias_options.outputs.severity || 'NONE' }}", "short": true}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true
+
+      - name: Notify — HIGH bias blocks deploy
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":rotating_light: *HIGH BIAS DETECTED — Deploy Blocked*",
+              "attachments": [{
+                "color": "#ff0000",
+                "fields": [
+                  {"title": "Action required", "value": "Review bias reports and retrain with debiasing before deploying"},
+                  {"title": "Reports", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true

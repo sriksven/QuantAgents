@@ -1,0 +1,357 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Bias Detection]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
+      skip_model_promote:
+        description: "Skip model promotion (deploy code only)"
+        required: false
+        default: false
+        type: boolean
+      force_rollback:
+        description: "Force rollback to previous model version"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/quantagents-backend
+
+jobs:
+  # ── Pre-flight checks ─────────────────────────────────────────────────────
+  preflight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      environment: ${{ steps.check.outputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine target environment and gate
+        id: check
+        run: |
+          ENV="${{ github.event.inputs.environment || 'staging' }}"
+          FORCE_ROLLBACK="${{ github.event.inputs.force_rollback }}"
+          if [[ "$FORCE_ROLLBACK" == "true" ]]; then
+            echo "should_deploy=rollback" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=deploy" >> $GITHUB_OUTPUT
+          fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "::notice::Deploying to $ENV (rollback=$FORCE_ROLLBACK)"
+
+  # ── Build and push Docker image ────────────────────────────────────────────
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.should_deploy == 'deploy'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/Dockerfile.backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+
+  # ── Promote models to production ──────────────────────────────────────────
+  promote-models:
+    name: Promote ML Models
+    runs-on: ubuntu-latest
+    needs: [preflight, build]
+    if: |
+      needs.preflight.outputs.should_deploy == 'deploy' &&
+      github.event.inputs.skip_model_promote != 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ML deps
+        working-directory: backend
+        run: pip install --quiet xgboost scikit-learn pandas numpy scipy pyarrow
+
+      - name: Download trained models
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-models-${{ github.sha }}
+          path: backend/models/
+        continue-on-error: true
+
+      - name: Promote models via registry
+        working-directory: backend
+        run: |
+          python -c "
+          from pathlib import Path
+          from ml.model_registry import get_registry
+          registry = get_registry()
+          models = ['confidence_calibrator', 'reward_predictor', 'options_pricer']
+          for model in models:
+              path = Path(f'models/{model}.pkl')
+              if path.exists():
+                  registry.promote(model, path)
+                  print(f'Promoted {model} → production')
+              else:
+                  print(f'Skipped {model} (no artifact)')
+          "
+
+      - name: List model versions after promotion
+        working-directory: backend
+        run: |
+          python -c "
+          from ml.model_registry import get_registry
+          registry = get_registry()
+          for m in ['confidence_calibrator', 'reward_predictor', 'options_pricer']:
+              versions = registry.list_versions(m)
+              print(f'{m}: {versions}')
+          "
+
+  # ── Rollback models ────────────────────────────────────────────────────────
+  rollback-models:
+    name: Rollback ML Models
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.should_deploy == 'rollback'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ML deps
+        working-directory: backend
+        run: pip install --quiet xgboost scikit-learn pandas numpy scipy pyarrow
+
+      - name: Rollback all models
+        working-directory: backend
+        run: |
+          python -c "
+          from ml.model_registry import get_registry
+          registry = get_registry()
+          models = ['confidence_calibrator', 'reward_predictor', 'options_pricer']
+          for model in models:
+              success = registry.rollback(model)
+              status = 'rolled back ✅' if success else 'no backup available ⚠️'
+              print(f'{model}: {status}')
+          "
+
+  # ── Deploy to Railway ─────────────────────────────────────────────────────
+  deploy-railway:
+    name: Deploy to Railway (${{ needs.preflight.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [preflight, build, promote-models]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.build.result == 'success' &&
+      (needs.promote-models.result == 'success' || needs.promote-models.result == 'skipped')
+    environment:
+      name: ${{ needs.preflight.outputs.environment }}
+      url: ${{ steps.deploy.outputs.deployment_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy backend service
+        id: deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service backend \
+            --environment ${{ needs.preflight.outputs.environment }} \
+            --detach \
+            --no-input \
+            2>&1 | tee /tmp/railway_output.txt
+          DEPLOY_URL=$(grep -oP 'https://[^\s]+railway\.app[^\s]*' /tmp/railway_output.txt | head -1 || echo "")
+          echo "deployment_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "::notice::Deployed to $DEPLOY_URL"
+
+      - name: Health check (30s grace period)
+        run: |
+          sleep 30
+          HEALTH_URL="${{ steps.deploy.outputs.deployment_url }}/health"
+          if [ -n "$HEALTH_URL" ]; then
+            for i in {1..5}; do
+              STATUS=$(curl -sf "$HEALTH_URL" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+              if [[ "$STATUS" == "ok" ]]; then
+                echo "Health check passed ✅ (attempt $i)"
+                exit 0
+              fi
+              echo "Attempt $i: status=$STATUS, retrying in 10s..."
+              sleep 10
+            done
+            echo "::warning::Health check did not pass — check deployment logs"
+          else
+            echo "::warning::No deployment URL — skipping health check"
+          fi
+
+  # ── Smoke tests post-deploy ────────────────────────────────────────────────
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [preflight, deploy-railway]
+    if: needs.deploy-railway.result == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install --quiet httpx pytest
+
+      - name: Run smoke tests
+        env:
+          BASE_URL: ${{ needs.deploy-railway.outputs.deployment_url || 'http://localhost:8000' }}
+        run: |
+          python -c "
+          import os, sys
+          try:
+              import httpx
+              base = os.getenv('BASE_URL', 'http://localhost:8000').rstrip('/')
+              # Health
+              r = httpx.get(f'{base}/health', timeout=10)
+              assert r.status_code == 200, f'Health check failed: {r.status_code}'
+              data = r.json()
+              assert data.get('status') == 'ok', f'Unexpected health: {data}'
+              print('✅ /health OK')
+              # API root
+              r2 = httpx.get(f'{base}/', timeout=10)
+              assert r2.status_code == 200
+              print('✅ / OK')
+              print('All smoke tests passed')
+          except Exception as e:
+              print(f'Smoke test failed: {e}', file=sys.stderr)
+              sys.exit(1)
+          "
+
+  # ── Notify final result ────────────────────────────────────────────────────
+  notify:
+    name: Notify Deployment Result
+    runs-on: ubuntu-latest
+    needs: [preflight, build, deploy-railway, smoke-tests]
+    if: always()
+
+    steps:
+      - name: Notify success
+        if: |
+          needs.deploy-railway.result == 'success' &&
+          needs.smoke-tests.result == 'success'
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":rocket: *QuantAgents Deployed Successfully*",
+              "attachments": [{
+                "color": "#36a64f",
+                "fields": [
+                  {"title": "Environment", "value": "${{ needs.preflight.outputs.environment }}", "short": true},
+                  {"title": "SHA", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Image", "value": "sha-${{ github.sha }}", "short": true},
+                  {"title": "Smoke Tests", "value": ":white_check_mark: Passed", "short": true}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true
+
+      - name: Notify failure
+        if: |
+          needs.deploy-railway.result == 'failure' ||
+          needs.smoke-tests.result == 'failure' ||
+          needs.build.result == 'failure'
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":ambulance: *QuantAgents Deploy FAILED* — manual action required",
+              "attachments": [{
+                "color": "#ff0000",
+                "fields": [
+                  {"title": "Environment", "value": "${{ needs.preflight.outputs.environment }}", "short": true},
+                  {"title": "SHA", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Build", "value": "${{ needs.build.result }}", "short": true},
+                  {"title": "Deploy", "value": "${{ needs.deploy-railway.result }}", "short": true},
+                  {"title": "Smoke Tests", "value": "${{ needs.smoke-tests.result }}", "short": true},
+                  {"title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true
+
+      - name: Notify rollback
+        if: needs.preflight.outputs.should_deploy == 'rollback'
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {"text": ":rewind: *QuantAgents Model Rollback Executed* — reverted to previous model versions"}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true

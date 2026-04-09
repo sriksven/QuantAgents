@@ -1,0 +1,208 @@
+name: Model Training
+
+on:
+  push:
+    paths:
+      - "backend/ml/**"
+      - "backend/data/training/**"
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      n_trials:
+        description: "Optuna trials per model (default: 30)"
+        required: false
+        default: "30"
+      force_promote:
+        description: "Force promote even if metric unchanged"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: "3.11"
+  MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI || 'sqlite:///mlflow.db' }}
+
+jobs:
+  train-and-validate:
+    name: Train + Validate Models
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-ml-${{ runner.os }}-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: pip-ml-${{ runner.os }}-
+
+      - name: Install ML dependencies
+        working-directory: backend
+        run: |
+          pip install --quiet \
+            xgboost scikit-learn optuna mlflow \
+            pandas numpy scipy pyarrow \
+            shap lime
+
+      - name: Pull training data (DVC)
+        run: dvc pull backend/data/ || echo "DVC pull skipped — generating fresh data"
+
+      # ── Generate training data if not cached ──────────────────────────────
+
+      - name: Generate training data
+        working-directory: backend
+        run: |
+          python -c "
+          from ml.data_generator import generate_all
+          import logging
+          logging.basicConfig(level=logging.INFO)
+          paths = generate_all(verbose=True)
+          for name, path in paths.items():
+              import pandas as pd
+              df = pd.read_parquet(path)
+              print(f'{name}: {len(df):,} rows')
+          "
+
+      # ── Train all 3 models ────────────────────────────────────────────────
+
+      - name: Train Confidence Calibrator
+        working-directory: backend
+        env:
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
+          N_TRIALS: ${{ github.event.inputs.n_trials || '30' }}
+        id: train_calibrator
+        run: |
+          python -c "
+          from ml.train_models import train_confidence_calibrator
+          m = train_confidence_calibrator(n_trials=int('$N_TRIALS'), track_mlflow=True)
+          print(f'test_auc={m[\"test_auc\"]}')
+          print(f'test_brier={m[\"test_brier_score\"]}')
+          " | tee /tmp/calibrator_metrics.txt
+          echo "test_auc=$(grep test_auc /tmp/calibrator_metrics.txt | cut -d= -f2)" >> $GITHUB_OUTPUT
+
+      - name: Train Reward Predictor
+        working-directory: backend
+        env:
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
+          N_TRIALS: ${{ github.event.inputs.n_trials || '30' }}
+        id: train_reward
+        run: |
+          python -c "
+          from ml.train_models import train_reward_predictor
+          m = train_reward_predictor(n_trials=int('$N_TRIALS'), track_mlflow=True)
+          print(f'r2_30d={m[\"r2_30d\"]}')
+          print(f'r2_60d={m[\"r2_60d\"]}')
+          print(f'r2_90d={m[\"r2_90d\"]}')
+          " | tee /tmp/reward_metrics.txt
+          echo "r2_30d=$(grep r2_30d /tmp/reward_metrics.txt | head -1 | cut -d= -f2)" >> $GITHUB_OUTPUT
+
+      - name: Train Options Pricer
+        working-directory: backend
+        env:
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
+          N_TRIALS: ${{ github.event.inputs.n_trials || '30' }}
+        id: train_options
+        run: |
+          python -c "
+          from ml.train_models import train_options_pricer
+          m = train_options_pricer(n_trials=int('$N_TRIALS'), track_mlflow=True)
+          print(f'test_f1={m[\"test_f1_weighted\"]}')
+          print(f'test_acc={m[\"test_accuracy\"]}')
+          " | tee /tmp/options_metrics.txt
+          echo "test_f1=$(grep test_f1 /tmp/options_metrics.txt | cut -d= -f2)" >> $GITHUB_OUTPUT
+
+      # ── Validate minimum thresholds ───────────────────────────────────────
+
+      - name: Validate model thresholds
+        working-directory: backend
+        env:
+          AUC: ${{ steps.train_calibrator.outputs.test_auc }}
+          R2_30D: ${{ steps.train_reward.outputs.r2_30d }}
+          F1: ${{ steps.train_options.outputs.test_f1 }}
+        run: |
+          python -c "
+          import sys, os
+          auc = float(os.getenv('AUC', '0'))
+          r2  = float(os.getenv('R2_30D', '0'))
+          f1  = float(os.getenv('F1', '0'))
+          failures = []
+          if auc < 0.60: failures.append(f'Confidence Calibrator AUC={auc:.4f} < 0.60')
+          if r2 < 0.10:  failures.append(f'Reward Predictor R2_30d={r2:.4f} < 0.10')
+          if f1 < 0.55:  failures.append(f'Options Pricer F1={f1:.4f} < 0.55')
+          if failures:
+              print('THRESHOLD FAILURES:')
+              for f in failures: print(f'  ✗ {f}')
+              sys.exit(1)
+          print('All thresholds passed ✅')
+          print(f'  Calibrator AUC={auc:.4f}  Reward R2={r2:.4f}  Options F1={f1:.4f}')
+          "
+
+      # ── Upload models as artifacts ────────────────────────────────────────
+
+      - name: Upload trained models
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models-${{ github.sha }}
+          path: backend/models/*.pkl
+          retention-days: 30
+
+      # ── Write summary ─────────────────────────────────────────────────────
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Model Training Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Confidence Calibrator | AUC | ${{ steps.train_calibrator.outputs.test_auc }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reward Predictor | R² 30d | ${{ steps.train_reward.outputs.r2_30d }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Options Pricer | F1 | ${{ steps.train_options.outputs.test_f1 }} |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Notifications ─────────────────────────────────────────────────────
+
+      - name: Notify success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":brain: *Model Training Passed*",
+              "attachments": [{
+                "color": "#36a64f",
+                "fields": [
+                  {"title": "Calibrator AUC", "value": "${{ steps.train_calibrator.outputs.test_auc }}", "short": true},
+                  {"title": "Reward R² 30d", "value": "${{ steps.train_reward.outputs.r2_30d }}", "short": true},
+                  {"title": "Options F1", "value": "${{ steps.train_options.outputs.test_f1 }}", "short": true},
+                  {"title": "Artifacts", "value": "trained-models-${{ github.sha }}", "short": true}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true
+
+      - name: Notify failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":red_circle: *Model Training FAILED* — threshold validation blocked",
+              "attachments": [{
+                "color": "#ff0000",
+                "fields": [
+                  {"title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true

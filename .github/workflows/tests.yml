@@ -1,0 +1,209 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  UV_CACHE_DIR: /tmp/uv-cache
+
+jobs:
+  # ── Lint + type-check (fast gate) ─────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      - name: Install dev deps
+        working-directory: backend
+        run: uv sync --extra dev
+
+      - name: Ruff lint
+        working-directory: backend
+        run: uv run ruff check . --output-format=github
+
+      - name: Ruff format check
+        working-directory: backend
+        run: uv run ruff format --check .
+
+  # ── Full test matrix ───────────────────────────────────────────────────────
+  test:
+    name: Tests (Phase ${{ matrix.phase }})
+    runs-on: ubuntu-latest
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+          - "2"   # data fetchers
+          - "3"   # core agents + orchestrator
+          - "4"   # research committee + debate
+          - "5"   # trading desk
+          - "6"   # options module
+          - "7"   # quantum module
+          - "8"   # ml models
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: quantagents
+          POSTGRES_PASSWORD: quantagents_secret
+          POSTGRES_DB: quantagents
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --extra dev
+
+      - name: Run Phase ${{ matrix.phase }} tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://quantagents:quantagents_secret@localhost:5432/quantagents
+          REDIS_URL: redis://localhost:6379/0
+          OPENAI_API_KEY: test-key
+          TAVILY_API_KEY: test-key
+          ALPHA_VANTAGE_API_KEY: test-key
+          ALPACA_API_KEY: test-key
+          ALPACA_SECRET_KEY: test-key
+          IS_PAPER_TRADING: "true"
+          MLFLOW_TRACKING_URI: sqlite:///mlflow_test.db
+        run: |
+          uv run pytest tests/test_phase${{ matrix.phase }}.py \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=xml:coverage_phase${{ matrix.phase }}.xml \
+            --cov-report=term-missing
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: backend/coverage_phase${{ matrix.phase }}.xml
+          flags: phase${{ matrix.phase }}
+          fail_ci_if_error: false
+
+  # ── Aggregate coverage gate ────────────────────────────────────────────────
+  coverage-gate:
+    name: Coverage Gate (≥ 80%)
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: quantagents
+          POSTGRES_PASSWORD: quantagents_secret
+          POSTGRES_DB: quantagents
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --extra dev
+
+      - name: Run all tests with combined coverage
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://quantagents:quantagents_secret@localhost:5432/quantagents
+          REDIS_URL: redis://localhost:6379/0
+          OPENAI_API_KEY: test-key
+          TAVILY_API_KEY: test-key
+          ALPHA_VANTAGE_API_KEY: test-key
+          ALPACA_API_KEY: test-key
+          ALPACA_SECRET_KEY: test-key
+          IS_PAPER_TRADING: "true"
+          MLFLOW_TRACKING_URI: sqlite:///mlflow_test.db
+        run: |
+          uv run pytest tests/ -v --cov=. --cov-report=term --cov-fail-under=80
+
+  # ── Notify on failure ─────────────────────────────────────────────────────
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [lint, test, coverage-gate]
+    if: failure()
+    steps:
+      - name: Send Slack alert
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "text": ":red_circle: *QuantAgents CI Failed*",
+              "attachments": [{
+                "color": "#ff0000",
+                "fields": [
+                  {"title": "Repo", "value": "${{ github.repository }}", "short": true},
+                  {"title": "Branch", "value": "${{ github.ref_name }}", "short": true},
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": true},
+                  {"title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true
