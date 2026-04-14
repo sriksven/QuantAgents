@@ -4,62 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart2,
-  BookOpen,
   Brain,
   FlaskConical,
   LineChart,
+  MonitorDot,
   TrendingUp,
+  Activity,
+  LayoutGrid,
 } from "lucide-react";
 
 const navItems = [
-  {
-    href: "/",
-    label: "Overview",
-    icon: BookOpen,
-    description: "Platform landing",
-  },
-  {
-    href: "/analyze",
-    label: "Analysis Console",
-    icon: Brain,
-    description: "8-agent research",
-  },
-  {
-    href: "/trading",
-    label: "Trading Terminal",
-    icon: TrendingUp,
-    description: "Orders & positions",
-  },
-  {
-    href: "/portfolio",
-    label: "Portfolio",
-    icon: BarChart2,
-    description: "P&L & allocations",
-  },
-  {
-    href: "/mock-trading",
-    label: "Mock Trading",
-    icon: TrendingUp,
-    description: "Sandbox sandbox",
-  },
-  {
-    href: "/backtest",
-    label: "Backtest Lab",
-    icon: FlaskConical,
-    description: "Strategy validation",
-  },
-  {
-    href: "/watchlist",
-    label: "Watchlist",
-    icon: LineChart,
-    description: "Live prices & alerts",
-  },
-  {
-    href: "/observability",
-    label: "Observability",
-    icon: BookOpen,
-    description: "MLOps & traces",
-  },
+  { href: "/analyze",       label: "Analysis",         icon: Brain       },
+  { href: "/trading",       label: "Trading Terminal",  icon: TrendingUp  },
+  { href: "/portfolio",     label: "Portfolio",         icon: BarChart2   },
+  { href: "/mock-trading",  label: "Mock Trading",      icon: MonitorDot  },
+  { href: "/backtest",      label: "Backtest Lab",      icon: FlaskConical},
+  { href: "/watchlist",     label: "Watchlist",         icon: LineChart   },
+  { href: "/observability", label: "Observability",     icon: Activity    },
 ];
 
 export function Sidebar() {
@@ -70,13 +31,13 @@ export function Sidebar() {
       {/* Brand */}
       <div className="sidebar-brand">
         <h1>QuantAgents</h1>
-        <p>Trading Intelligence Platform</p>
+        <p>Trading Intelligence</p>
       </div>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" style={{ paddingTop: 8 }}>
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
@@ -90,8 +51,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Status */}
-      <div className="sidebar-status">
+      {/* Footer status */}
+      <div className="sidebar-footer">
         <div className="status-dot" />
         <span className="status-text">Paper trading active</span>
       </div>
