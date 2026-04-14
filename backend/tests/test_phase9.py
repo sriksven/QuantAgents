@@ -111,7 +111,6 @@ class TestDataPipelineWorkflow:
         assert "dry_run" in inputs
 
     def test_has_alpha_vantage_secret(self):
-        w = _load("data_pipeline.yml")
         yaml_text = (WORKFLOWS_DIR / "data_pipeline.yml").read_text()
         assert "ALPHA_VANTAGE_API_KEY" in yaml_text
 
@@ -122,7 +121,6 @@ class TestDataPipelineWorkflow:
         assert any("dvc" in n.lower() for n in step_names)
 
     def test_has_anomaly_detection_step(self):
-        w = _load("data_pipeline.yml")
         yaml_text = (WORKFLOWS_DIR / "data_pipeline.yml").read_text()
         assert "anomaly" in yaml_text.lower()
 
@@ -201,7 +199,6 @@ class TestBiasDetectionWorkflow:
         assert "bias-reports" in yaml_text
 
     def test_has_90_day_retention(self):
-        w = _load("bias_detection.yml")
         yaml_text = (WORKFLOWS_DIR / "bias_detection.yml").read_text()
         assert "90" in yaml_text  # 90-day retention
 

@@ -16,7 +16,7 @@ sys.path.insert(0, ".")
 
 class TestDebateRouting:
     def _make_state(self, challenges=None, debate_rounds=0, max_rounds=2):
-        from orchestrator.state import initial_state, Challenge
+        from orchestrator.state import initial_state
         state = initial_state("AAPL")
         state["debate_rounds"] = debate_rounds
         state["max_debate_rounds"] = max_rounds
@@ -148,6 +148,7 @@ print(x.mean())
 class TestRiskAssessorParsing:
     def test_challenge_from_valid_json(self):
         import json
+
         from orchestrator.state import Challenge
 
         raw = json.dumps({
@@ -175,7 +176,8 @@ class TestRiskAssessorParsing:
 
     def test_portfolio_recommendation_parsing(self):
         import json
-        from orchestrator.state import TradeRecommendation, ScenarioTarget, Catalyst
+
+        from orchestrator.state import Catalyst, ScenarioTarget, TradeRecommendation
 
         raw = json.dumps({
             "action": "BUY",

@@ -5,10 +5,8 @@ pre-computed data to verify the pipeline components.
 """
 from __future__ import annotations
 
-import sys
 import pickle
-import tempfile
-import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -81,7 +79,7 @@ class TestDataGenerator:
         from ml.data_generator import generate_all
         paths = generate_all(output_dir=tmp_path, verbose=False)
         assert len(paths) == 3
-        for name, path in paths.items():
+        for _name, path in paths.items():
             assert Path(path).exists()
             df = pd.read_parquet(path)
             assert len(df) > 0
@@ -91,13 +89,13 @@ class TestDataGenerator:
 
 class TestFeatureEncoding:
     def test_regime_encoding(self):
-        from ml.train_models import _encode, REGIME_MAP
+        from ml.train_models import REGIME_MAP, _encode
         df = pd.DataFrame({"market_regime": ["bull", "bear", "sideways"]})
         encoded = _encode(df)
         assert encoded["market_regime"].tolist() == [REGIME_MAP[r] for r in ["bull", "bear", "sideways"]]
 
     def test_action_encoding(self):
-        from ml.train_models import _encode, ACTION_MAP
+        from ml.train_models import ACTION_MAP, _encode
         df = pd.DataFrame({"action": ["BUY", "SELL", "HOLD"]})
         encoded = _encode(df)
         assert encoded["action"].tolist() == [ACTION_MAP[a] for a in ["BUY", "SELL", "HOLD"]]
@@ -219,7 +217,7 @@ class TestMonthlyRetrainDAG:
                 "monthly_retrain",
                 Path("airflow/dags/monthly_retrain.py"),
             )
-            module = importlib.util.load_from_spec(spec)
+            importlib.util.load_from_spec(spec)
             # If import fails (no airflow installed), that's OK — skip test
         except Exception:
             pytest.skip("Airflow not installed — DAG import skipped")

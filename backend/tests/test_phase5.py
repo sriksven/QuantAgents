@@ -4,11 +4,6 @@ Phase 5 tests — position sizing, backtest mechanics, graph v3 routing, Alpaca 
 from __future__ import annotations
 
 import sys
-import json
-import math
-
-import pytest
-import numpy as np
 
 sys.path.insert(0, ".")
 
@@ -120,8 +115,7 @@ class TestBacktestMechanics:
         """meets_minimum_thresholds requires Sharpe>=1, MaxDD>=-25%, WinRate>=45%, Trades>=10."""
         from mcp_servers.backtest import run_backtest
         result = run_backtest("AAPL", "sma_crossover", "2020-01-01", "2024-01-01")
-        if "error" not in result:
-            if result["meets_minimum_thresholds"]:
+        if "error" not in result and result["meets_minimum_thresholds"]:
                 assert result["sharpe_ratio"] >= 1.0
                 assert result["max_drawdown_pct"] >= -25.0
                 assert result["win_rate"] >= 0.45
@@ -145,7 +139,7 @@ class TestGraphV3Routing:
 
     def test_execute_or_save_buy_validated(self):
         from orchestrator.graph_v3 import execute_or_save
-        from orchestrator.state import TradeRecommendation, BacktestResult
+        from orchestrator.state import BacktestResult, TradeRecommendation
 
         state = self._base_state()
         state["recommendation"] = TradeRecommendation(action="BUY", confidence=0.8)
@@ -154,7 +148,7 @@ class TestGraphV3Routing:
 
     def test_execute_or_save_buy_invalid_backtest(self):
         from orchestrator.graph_v3 import execute_or_save
-        from orchestrator.state import TradeRecommendation, BacktestResult
+        from orchestrator.state import BacktestResult, TradeRecommendation
 
         state = self._base_state()
         state["recommendation"] = TradeRecommendation(action="BUY", confidence=0.8)

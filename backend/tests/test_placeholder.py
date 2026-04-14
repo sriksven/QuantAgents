@@ -2,9 +2,6 @@
 Backend test placeholder — verifies the test infrastructure works.
 Real tests will be added per phase.
 """
-import pytest
-
-
 def test_placeholder():
     """Placeholder that always passes — real tests added per phase."""
     assert True

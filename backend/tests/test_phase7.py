@@ -5,10 +5,7 @@ quantum-inspired fallbacks, graph v5 routing.
 from __future__ import annotations
 
 import sys
-import json
-import math
 
-import pytest
 import numpy as np
 
 sys.path.insert(0, ".")
@@ -40,7 +37,7 @@ class TestQuantumInspiredOptimization:
 
     def test_high_risk_aversion_reduces_vol(self):
         """Higher risk aversion should allocate away from volatile assets."""
-        from mcp_servers.quantum_finance import _quantum_inspired_optimize, _sharpe
+        from mcp_servers.quantum_finance import _quantum_inspired_optimize
         # Asset 0: high return, high vol. Asset 1: low return, low vol.
         mu = np.array([0.20, 0.05])
         cov = np.array([[0.09, 0.0], [0.0, 0.01]])

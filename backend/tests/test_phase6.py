@@ -3,10 +3,8 @@ Phase 6 tests — options strategy selection, Greeks, IV decision matrix, graph 
 """
 from __future__ import annotations
 
-import sys
 import math
-
-import pytest
+import sys
 
 sys.path.insert(0, ".")
 
