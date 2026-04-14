@@ -10,15 +10,15 @@ const PATHS = 5
 const DAYS = 30
 const START_PRICE = 100
 
-const MOCK_MONTE_CARLO = Array.from({ length: DAYS }).map((_, day) => {
+const MOCK_MONTE_CARLO: Record<string, string | number>[] = []
+for (let day = 0; day < DAYS; day++) {
   const result: Record<string, string | number> = { day: `Day ${day}` }
   for (let p = 0; p < PATHS; p++) {
-    // Random walk with slight upward drift
     const prev = day === 0 ? START_PRICE : (MOCK_MONTE_CARLO[day - 1][`path${p}`] as number)
     result[`path${p}`] = prev * (1 + (Math.random() - 0.45) * 0.04)
   }
-  return result
-})
+  MOCK_MONTE_CARLO.push(result)
+}
 
 const PATH_COLORS = ["#8b5cf6", "#10b981", "#f59e0b", "#ef4444", "#06b6d4"]
 

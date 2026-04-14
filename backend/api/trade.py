@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session
+from db.base import get_db
 from orchestrator.graph_v3 import get_graph_v3
 from orchestrator.state import initial_state
 
@@ -123,7 +123,7 @@ async def _stream_trade(ticker: str, user_id: str, query: str | None, analysis_i
 @router.post("/trade")
 async def trade(
     request: TradeRequest,
-    db: AsyncSession = Depends(get_session),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Full pipeline: research → debate → strategy → backtest validation → order execution.

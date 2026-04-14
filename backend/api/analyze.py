@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session
+from db.base import get_db
 from db.models import Analysis, AgentReport as AgentReportModel
 from orchestrator.graph import get_graph
 from orchestrator.state import initial_state
@@ -172,7 +172,7 @@ async def run_streaming_analysis(
 @router.post("/analyze")
 async def analyze(
     request: AnalyzeRequest,
-    db: AsyncSession = Depends(get_session),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Run a full multi-agent analysis for a ticker.
@@ -228,7 +228,7 @@ async def analyze(
 @router.get("/analyze/{analysis_id}")
 async def get_analysis(
     analysis_id: str,
-    db: AsyncSession = Depends(get_session),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the status and results of a previous analysis by ID."""
     from sqlalchemy import select

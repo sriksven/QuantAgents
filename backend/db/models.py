@@ -195,3 +195,39 @@ class ModelVersion(Base):
     training_data_hash: Mapped[str | None] = mapped_column(String(64))  # DVC data version
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deployed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ─── 10. Mock Trading Sandbox ────────────────────────────────────────────────
+class MockPortfolio(Base):
+    __tablename__ = "mock_portfolios"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, default="default")
+    cash_balance: Mapped[float] = mapped_column(Float, default=100000.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MockPosition(Base):
+    __tablename__ = "mock_positions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, default="default")
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    qty: Mapped[float] = mapped_column(Float, default=0.0)
+    average_entry_price: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MockTrade(Base):
+    __tablename__ = "mock_trades"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, default="default")
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    side: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY / SELL
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)  # qty * price
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

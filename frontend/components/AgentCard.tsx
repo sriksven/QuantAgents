@@ -6,15 +6,15 @@ import ReactMarkdown from "react-markdown"
 import { AgentNode, AgentUpdate } from "../hooks/useAgentStream"
 import { cn } from "../lib/utils"
 
-const AGENT_CONFIG: Record<AgentNode, { title: string; icon: React.ElementType; color: string }> = {
-  research_committee: { title: "Market Researcher", icon: FileSearch, color: "text-blue-400" },
-  technical_analyst: { title: "Technical Analyst", icon: LineChart, color: "text-purple-400" },
-  risk_assessor: { title: "Risk Assessor", icon: ShieldAlert, color: "text-red-400" },
-  portfolio_strategist: { title: "Portfolio Strategist", icon: Briefcase, color: "text-emerald-400" },
-  options_analyst: { title: "Options Analyst", icon: Activity, color: "text-amber-400" },
-  quantum_optimizer: { title: "Quantum Optimizer", icon: Cpu, color: "text-cyan-400" },
-  backtester: { title: "Backtest Engine", icon: Zap, color: "text-indigo-400" },
-  trade_executor: { title: "Trade Executor", icon: Brain, color: "text-slate-300" }
+const AGENT_CONFIG: Record<AgentNode, { title: string; icon: React.ElementType; color: string; logic: string }> = {
+  research_committee: { title: "Market Researcher", icon: FileSearch, color: "text-blue-600", logic: "Queries Alpha Vantage & SEC Edgar. Outputs fundamental summaries." },
+  technical_analyst: { title: "Technical Analyst", icon: LineChart, color: "text-purple-600", logic: "Compute Moving Averages, RSI from price feeds. Outputs technical scores." },
+  risk_assessor: { title: "Risk Assessor", icon: ShieldAlert, color: "text-red-600", logic: "Calculates historic drawdowns and Beta. Outputs risk constraints." },
+  portfolio_strategist: { title: "Portfolio Strategist", icon: Briefcase, color: "text-emerald-600", logic: "Aggregates researcher & analyst signals into base allocation targets." },
+  options_analyst: { title: "Options Analyst", icon: Activity, color: "text-amber-600", logic: "Scans OPRA chain for volatility hedging. Outputs premium overlays." },
+  quantum_optimizer: { title: "Quantum Optimizer", icon: Cpu, color: "text-cyan-600", logic: "Runs QAOA simulated annealing on allocations. Outputs ideal weights." },
+  backtester: { title: "Backtest Engine", icon: Zap, color: "text-indigo-600", logic: "Validates optimized weights against 5Y historical data via VectorBT." },
+  trade_executor: { title: "Trade Executor", icon: Brain, color: "text-slate-600", logic: "Formats final payloads and dispatches POST order to Alpaca API." }
 }
 
 export function AgentCard({ 
@@ -40,18 +40,18 @@ export function AgentCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
-        "glass-panel rounded-xl overflow-hidden flex flex-col transition-all duration-300 relative",
-        isThinking ? "ring-1 ring-white/10" : "border border-white/5",
-        hasResult && "shadow-[0_4px_30px_rgba(0,0,0,0.5)] border-white/10"
+        "glass-panel flex flex-col transition-all duration-300 relative bg-white",
+        isThinking ? "border-blue-300 shadow-sm" : "border-slate-200",
+        hasResult && "shadow-md border-slate-300"
       )}
     >
       {/* Header */}
-      <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 rounded-t-lg">
         <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg bg-white/5", config.color)}>
+          <div className={cn("p-2 rounded-lg bg-white shadow-sm border border-slate-200", config.color)}>
             <Icon size={18} />
           </div>
-          <h3 className="font-semibold text-[14px] tracking-wide text-slate-200">
+          <h3 className="font-semibold text-[14px] tracking-wide text-slate-900">
             {config.title}
           </h3>
         </div>
@@ -95,14 +95,14 @@ export function AgentCard({
             initial={{ opacity: 0, y: 10 }} 
             animate={{ opacity: 1, y: 0 }}
             className="prose prose-invert prose-sm max-w-none 
-                       prose-headings:text-slate-200 prose-headings:font-semibold
-                       prose-a:text-indigo-400 prose-p:text-slate-300
-                       prose-strong:text-indigo-300"
+                    prose-headings:text-slate-900 prose-headings:font-semibold
+                       prose-a:text-blue-600 prose-p:text-slate-700
+                       prose-strong:text-slate-900"
           >
             {typeof update.content === 'string' ? (
               <ReactMarkdown>{update.content}</ReactMarkdown>
             ) : (
-              <pre className="text-[11px] bg-black/40 p-3 rounded-lg overflow-x-auto text-emerald-400 font-mono border border-white/5">
+              <pre className="text-[11px] bg-slate-100 p-3 rounded-lg overflow-x-auto text-emerald-700 font-mono border border-slate-200">
                 {JSON.stringify(update.content, null, 2)}
               </pre>
             )}
@@ -110,11 +110,16 @@ export function AgentCard({
         )}
       </div>
 
-      {hasResult && (
-        <div className="px-4 py-2 text-[10px] text-slate-500 uppercase tracking-wider text-right border-t border-white/5 bg-black/20">
-          Last updated: {new Date(update.timestamp).toLocaleTimeString()}
-        </div>
-      )}
+      <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 rounded-b-lg">
+        <p className="text-[11px] text-slate-500 leading-tight border-l-2 border-blue-200 pl-2">
+          <strong className="text-slate-700">Methodology:</strong> {config.logic}
+        </p>
+        {hasResult && (
+          <div className="mt-2 text-[9px] text-slate-400 uppercase tracking-wider text-right">
+            Done: {new Date(update.timestamp).toLocaleTimeString()}
+          </div>
+        )}
+      </div>
     </motion.div>
   )
 }

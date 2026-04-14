@@ -14,24 +14,26 @@
 
 <br />
 
-## 🚀 Overview
+## Overview
 
 **QuantAgents** is an autonomous 8-agent trading intelligence committee built on LangGraph. The platform orchestrates specialized AI agents (using GPT-4) to collaboratively research equities, debate findings via adversarial critique loops, execute paper trades on Alpaca, and optimize asset allocation using IBM Qiskit Quantum algorithms.
 
 The system features dual-layer memory (Redis for episodic short-term, Qdrant for semantic long-term) allowing the committee to learn from past trades and prediction accuracy, effectively getting smarter with every transaction through RL-based reward tracking.
 
-### 🌟 Key Features
+### Key Features
 - **8-Agent Committee**: Specialized node agents including Fundamental Analyst, Technical Analyst, Risk Assessor, Portfolio Strategist, Options Analyst, Quantum Optimizer, Backtester, and Trade Executor.
 - **Quantum Optimization**: Integrates IBM Qiskit (QAOA algorithm) for advanced efficient-frontier portfolio rebalancing.
 - **Options Pricing & ML**: Includes Black-Scholes pricing variants with XGBoost + Optuna ML models for confidence calibration.
 - **Dual-Memory RAG**: Retains historical market conditions and trade rationale.
 - **Real-Time Streaming**: Native Server-Sent Events (SSE) stream agent debate logs and status updates directly to the frontend.
-- **Glassmorphism UI**: A gorgeous, modern Next.js + Tailwind React frontend with Recharts analytics.
+- **Exaggerated Minimalism UI**: A gorgeous, high-contrast Next.js frontend driven by a bold, flat, financial design system.
+- **Mock Trading Sandbox**: Interactively test trading manually with live synced Alpaca quotes natively on an isolated local Postgres sub-ledger.
 - **Production CI/CD**: 5 complete GitHub Actions workflows tracking unit tests, ML model training, system bias limits, and auto-deployments.
+- **Comprehensive Documentation**: Complete insight into the system. See the `/docs` directory for full writeups on the tech stack, pipeline flows, and each of the 8 AI Agents.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -67,7 +69,7 @@ graph TD
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 - **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, Framer Motion, Recharts
 - **Backend**: Python 3.12, FastAPI, LangGraph, LangChain, SQLAlchemy (Async), Alembic
@@ -79,7 +81,7 @@ graph TD
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Docker and Docker Compose
@@ -128,7 +130,7 @@ graph TD
 
 ---
 
-## 🧪 CI/CD & Testing
+## CI/CD & Testing
 
 The platform enforces strict quality gates via **GitHub Actions**:
 1. **Tests & Linting**: 170+ Pytest assertions spanning agents, core logic, ML models, and memory.
@@ -145,7 +147,7 @@ uv run pytest tests/ -v
 
 ---
 
-## 📝 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 

@@ -14,6 +14,12 @@ import {
 const navItems = [
   {
     href: "/",
+    label: "Overview",
+    icon: BookOpen,
+    description: "Platform landing",
+  },
+  {
+    href: "/analyze",
     label: "Analysis Console",
     icon: Brain,
     description: "8-agent research",
@@ -29,6 +35,12 @@ const navItems = [
     label: "Portfolio",
     icon: BarChart2,
     description: "P&L & allocations",
+  },
+  {
+    href: "/mock-trading",
+    label: "Mock Trading",
+    icon: TrendingUp,
+    description: "Sandbox sandbox",
   },
   {
     href: "/backtest",

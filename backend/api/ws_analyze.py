@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session
+from db.base import get_db
 from orchestrator.graph_v2 import get_graph_v2
 from orchestrator.state import initial_state
 
