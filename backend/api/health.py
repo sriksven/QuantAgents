@@ -1,5 +1,6 @@
 """Health check router."""
 import time
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -13,7 +14,7 @@ _start_time = time.time()
 
 
 @router.get("/health")
-async def health_check(db: AsyncSession = Depends(get_db)):
+async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
     """Returns service health information."""
     try:
         await db.execute(text("SELECT 1"))

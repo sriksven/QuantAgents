@@ -1,14 +1,16 @@
-import uuid
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+import logging
+from typing import Any, Dict, List
 
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import get_settings
 from db.base import get_db
 from db.models import MockPortfolio, MockPosition, MockTrade
-from pydantic import BaseModel
 
-import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/mock-trade", tags=["Mock Trading"])
@@ -123,9 +125,6 @@ async def execute_mock_order(order: OrderRequest, user_id: str = "default", db: 
     return {"status": "success", "message": f"{order.side.upper()} order processed for {order.qty} shares of {order.ticker}."}
 
 # Note: We rely on Alpaca frontend integration for live quotes. If the frontend wants a backend proxy it can be added here.
-
-import httpx
-from config import get_settings
 
 @router.get("/quote/{ticker}")
 async def get_quote(ticker: str):

@@ -5,20 +5,20 @@ Supports both streaming (SSE) and non-streaming (JSON) responses.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_db
-from db.models import Analysis, AgentReport as AgentReportModel
+from db.models import AgentReport as AgentReportModel, Analysis
 from orchestrator.graph import get_graph
 from orchestrator.state import initial_state
 
@@ -172,7 +172,7 @@ async def run_streaming_analysis(
 @router.post("/analyze")
 async def analyze(
     request: AnalyzeRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
     Run a full multi-agent analysis for a ticker.
@@ -222,13 +222,13 @@ async def analyze(
             )
         except Exception as exc:
             logger.error("Non-streaming analysis failed: %s", exc, exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc))
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/analyze/{analysis_id}")
 async def get_analysis(
     analysis_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Get the status and results of a previous analysis by ID."""
     from sqlalchemy import select
