@@ -2,13 +2,14 @@ import logging
 from typing import Annotated
 
 import httpx
-from config import get_settings
-from db.base import get_db
-from db.models import MockPortfolio, MockPosition, MockTrade
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import get_settings
+from db.base import get_db
+from db.models import MockPortfolio, MockPosition, MockTrade
 
 logger = logging.getLogger(__name__)
 

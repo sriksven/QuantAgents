@@ -6,6 +6,7 @@ Complements the SSE endpoint with bi-directional support (e.g. cancel mid-run).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -13,9 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_db
 from orchestrator.graph_v2 import get_graph_v2
 from orchestrator.state import initial_state
 
@@ -28,10 +27,8 @@ _active_tasks: dict[str, asyncio.Task] = {}
 
 async def _send(ws: WebSocket, event: str, data: dict[str, Any]) -> None:
     """Send a structured event over WebSocket."""
-    try:
+    with contextlib.suppress(Exception):
         await ws.send_text(json.dumps({"event": event, "data": data, "ts": datetime.utcnow().isoformat()}))
-    except Exception:
-        pass  # Client may have disconnected
 
 
 @router.websocket("/analyze/{ticker}")
@@ -88,7 +85,6 @@ async def ws_analyze(ws: WebSocket, ticker: str):
                             })
 
                         elif node_name in ("market_researcher", "fundamental_analyst", "technical_analyst"):
-                            key = f"{node_name.split('_')[0]}_report" if "analyst" not in node_name else f"{'_'.join(node_name.split('_')[:2])}_report"
                             # Determine report key
                             report_key_map = {
                                 "market_researcher": "market_report",
@@ -155,7 +151,7 @@ async def ws_analyze(ws: WebSocket, ticker: str):
                         analysis_task.cancel()
                         await _send(ws, "cancelled", {"analysis_id": analysis_id})
                         return
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
                 except Exception:
                     break
@@ -166,7 +162,7 @@ async def ws_analyze(ws: WebSocket, ticker: str):
         logger.info("WebSocket disconnected for %s/%s", ticker, analysis_id)
         if analysis_task and not analysis_task.done():
             analysis_task.cancel()
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await _send(ws, "error", {"message": "Connection timeout waiting for start command"})
     except Exception as exc:
         logger.error("WebSocket error for %s: %s", ticker, exc, exc_info=True)

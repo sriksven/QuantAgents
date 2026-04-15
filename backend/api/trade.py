@@ -9,7 +9,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -123,7 +123,7 @@ async def _stream_trade(ticker: str, user_id: str, query: str | None, analysis_i
 @router.post("/trade")
 async def trade(
     request: TradeRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
     Full pipeline: research → debate → strategy → backtest validation → order execution.
@@ -167,4 +167,4 @@ async def trade(
         )
     except Exception as exc:
         logger.error("Trade endpoint failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
