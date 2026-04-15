@@ -12,15 +12,14 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from db.base import get_db
 from db.models import AgentReport as AgentReportModel, Analysis
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from orchestrator.graph import get_graph
 from orchestrator.state import initial_state
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["analyze"])
