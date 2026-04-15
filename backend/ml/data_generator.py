@@ -51,6 +51,7 @@ TICKERS = [
 OUTPUT_DIR = Path("data/training")
 
 rng = np.random.default_rng(42)
+py_rng = random.Random(42)
 
 
 # ── Feature helpers ────────────────────────────────────────────────────────────
@@ -63,11 +64,11 @@ def _realistic_confidence() -> float:
 
 def _market_regime() -> str:
     """Randomly sample a market regime."""
-    return random.choice(["bull", "bear", "sideways", "volatile", "recovery"])
+    return py_rng.choice(["bull", "bear", "sideways", "volatile", "recovery"])
 
 
 def _debate_rounds() -> int:
-    return random.choice([0, 1, 1, 2, 2, 2, 3])
+    return py_rng.choice([0, 1, 1, 2, 2, 2, 3])
 
 
 def _market_features() -> dict[str, Any]:
@@ -119,9 +120,10 @@ def generate_confidence_calibrator(n_samples: int = 15_000) -> pd.DataFrame:
     records = []
     for _ in range(n_samples):
         reported_conf = _realistic_confidence()
-        action = random.choice(["BUY", "BUY", "BUY", "SELL", "HOLD"])
+        action = py_rng.choice(["BUY", "BUY", "BUY", "SELL", "HOLD"])
         debate_rounds = _debate_rounds()
         market = _market_features()
+        direction = 1.0 if action == "BUY" else (-1.0 if action == "SELL" else 0.0)
 
         # True accuracy: depends on regime, IV, and some noise
         regime_bonus = {
@@ -134,18 +136,30 @@ def generate_confidence_calibrator(n_samples: int = 15_000) -> pd.DataFrame:
 
         iv_penalty = -0.04 if market["iv_rank"] > 70 else 0.02 if market["iv_rank"] < 30 else 0.0
         debate_bonus = min(debate_rounds * 0.02, 0.06)
+        momentum_bonus = float(np.clip(direction * market["price_momentum_21d"] * 0.9, -0.05, 0.05))
+        sentiment_bonus = float(np.clip(direction * market["sentiment_score"] * 0.03, -0.03, 0.03))
+        analyst_bonus = float(
+            np.clip(direction * (market["analyst_consensus"] - 3.0) * 0.03, -0.045, 0.045)
+        )
+        earnings_bonus = float(
+            np.clip(direction * market["earnings_surprise_recent"] * 0.30, -0.03, 0.03)
+        )
 
         # True probability of being correct
         p_correct = float(
             np.clip(
                 0.52
-                + (reported_conf - 0.65) * 0.4
+                + (reported_conf - 0.65) * 0.55
                 + regime_bonus
                 + iv_penalty
                 + debate_bonus
-                + float(rng.normal(0, 0.05)),
-                0.1,
-                0.9,
+                + momentum_bonus
+                + sentiment_bonus
+                + analyst_bonus
+                + earnings_bonus
+                + float(rng.normal(0, 0.035)),
+                0.08,
+                0.92,
             )
         )
         true_correct = int(rng.binomial(1, p_correct))
@@ -184,7 +198,7 @@ def generate_reward_predictor(n_samples: int = 12_000) -> pd.DataFrame:
     records = []
     for _ in range(n_samples):
         reported_conf = _realistic_confidence()
-        action = random.choice(["BUY", "BUY", "SELL", "HOLD"])
+        action = py_rng.choice(["BUY", "BUY", "SELL", "HOLD"])
         market = _market_features()
 
         # Base return: momentum + regime + fundamental quality
