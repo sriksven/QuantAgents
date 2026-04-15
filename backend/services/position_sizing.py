@@ -3,6 +3,7 @@ QuantAgents — Position Sizing Service
 Half-Kelly criterion with volatility scaling, portfolio-level risk controls,
 and paper/live trading gates.
 """
+
 from __future__ import annotations
 
 import logging
@@ -134,7 +135,9 @@ def compute_position_size(
         "action": action.upper(),
         "recommended_shares": shares,
         "notional": round(actual_notional, 2),
-        "pct_of_portfolio": round(actual_notional / portfolio_value * 100, 2) if portfolio_value > 0 else 0,
+        "pct_of_portfolio": round(actual_notional / portfolio_value * 100, 2)
+        if portfolio_value > 0
+        else 0,
         "kelly_fraction": round(kelly_frac, 4),
         "vol_scalar": round(vol_scalar, 3),
         "stop_loss_price": stop_loss_price,
@@ -145,6 +148,6 @@ def compute_position_size(
             f"Half-Kelly={kelly_frac:.1%} × vol_scalar={vol_scalar:.2f} × "
             f"confidence={recommendation_confidence:.0%} → "
             f"{shares} shares @ ${current_price:.2f} = ${actual_notional:,.0f} "
-            f"({actual_notional/portfolio_value*100:.1f}% of portfolio)"
+            f"({actual_notional / portfolio_value * 100:.1f}% of portfolio)"
         ),
     }

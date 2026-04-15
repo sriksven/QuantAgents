@@ -3,6 +3,7 @@ QuantAgents — Trade Journal MCP Server
 Persists and retrieves trade records, P&L summaries, and RL reward signals.
 Backed by PostgreSQL via SQLAlchemy (async).
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,17 +16,21 @@ from mcp.server import FastMCP
 logger = logging.getLogger(__name__)
 mcp = FastMCP("trade-journal")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/quantagents")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/quantagents"
+)
 
 
 async def _get_conn():
     """Return an asyncpg connection pool."""
     import asyncpg
+
     url = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     return await asyncpg.connect(url)
 
 
 # ── Tool 1: Log Trade ────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def log_trade(
@@ -59,17 +64,29 @@ async def log_trade(
         Dict with trade_id and logged fields.
     """
     import uuid
+
     trade_id = str(uuid.uuid4())
     try:
         conn = await _get_conn()
-        await conn.execute("""
+        await conn.execute(
+            """
             INSERT INTO trade_journal
             (id, analysis_id, ticker, action, qty, price, order_id, strategy,
              confidence, stop_loss, take_profit, created_at)
             VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-        """, trade_id, analysis_id, ticker.upper(), action.upper(),
-            qty, price, order_id or None, strategy, confidence,
-            stop_loss, take_profit)
+        """,
+            trade_id,
+            analysis_id,
+            ticker.upper(),
+            action.upper(),
+            qty,
+            price,
+            order_id or None,
+            strategy,
+            confidence,
+            stop_loss,
+            take_profit,
+        )
         await conn.close()
         return {
             "trade_id": trade_id,
@@ -86,6 +103,7 @@ async def log_trade(
 
 
 # ── Tool 2: Update Trade Outcome ─────────────────────────────────────────────
+
 
 @mcp.tool()
 async def update_trade_outcome(
@@ -110,7 +128,7 @@ async def update_trade_outcome(
         conn = await _get_conn()
         row = await conn.fetchrow(
             "SELECT ticker, action, qty, price, created_at FROM trade_journal WHERE id = $1",
-            trade_id
+            trade_id,
         )
         if not row:
             await conn.close()
@@ -140,16 +158,23 @@ async def update_trade_outcome(
         time_penalty = max(0, (holding_days - 90) * 0.1)  # penalize holding > 90 days
         reward_signal = base_reward - time_penalty
 
-        await conn.execute("""
+        await conn.execute(
+            """
             UPDATE trade_journal
             SET exit_price = $1, exit_date = $2::date, realized_pnl = $3,
                 return_pct = $4, reward_signal = $5, holding_days = $6,
                 notes = $7, updated_at = NOW()
             WHERE id = $8
-        """, exit_price,
+        """,
+            exit_price,
             exit_date or datetime.utcnow().strftime("%Y-%m-%d"),
-            round(realized_pnl, 2), round(return_pct, 4),
-            round(reward_signal, 4), holding_days, notes, trade_id)
+            round(realized_pnl, 2),
+            round(return_pct, 4),
+            round(reward_signal, 4),
+            holding_days,
+            notes,
+            trade_id,
+        )
         await conn.close()
 
         return {
@@ -169,6 +194,7 @@ async def update_trade_outcome(
 
 
 # ── Tool 3: Get P&L Summary ──────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_pnl_summary(days: int = 90, ticker: str = "") -> dict[str, Any]:
@@ -232,8 +258,11 @@ async def get_pnl_summary(days: int = 90, ticker: str = "") -> dict[str, Any]:
             "profit_factor": round(sum(wins) / abs(sum(losses)), 3) if losses else None,
             "avg_reward_signal": round(sum(rewards) / len(rewards), 4) if rewards else 0,
             "ticker_breakdown": {
-                t: {"trades": s["trades"], "pnl": round(s["pnl"], 2),
-                    "win_rate": round(s["wins"] / s["trades"], 2)}
+                t: {
+                    "trades": s["trades"],
+                    "pnl": round(s["pnl"], 2),
+                    "win_rate": round(s["wins"] / s["trades"], 2),
+                }
                 for t, s in ticker_stats.items()
             },
         }
@@ -243,6 +272,7 @@ async def get_pnl_summary(days: int = 90, ticker: str = "") -> dict[str, Any]:
 
 
 # ── Tool 4: Get RL Reward History ─────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_rl_reward_history(ticker: str, limit: int = 20) -> dict[str, Any]:
@@ -259,13 +289,17 @@ async def get_rl_reward_history(ticker: str, limit: int = 20) -> dict[str, Any]:
     """
     try:
         conn = await _get_conn()
-        rows = await conn.fetch("""
+        rows = await conn.fetch(
+            """
             SELECT action, reward_signal, return_pct, confidence, created_at
             FROM trade_journal
             WHERE ticker = $1 AND reward_signal IS NOT NULL
             ORDER BY created_at DESC
             LIMIT $2
-        """, ticker.upper(), min(limit, 50))
+        """,
+            ticker.upper(),
+            min(limit, 50),
+        )
         await conn.close()
 
         if not rows:
@@ -282,13 +316,13 @@ async def get_rl_reward_history(ticker: str, limit: int = 20) -> dict[str, Any]:
         for r in rows[:5]:
             context_lines.append(
                 f"- {r['action']} on {str(r['created_at'])[:10]}: "
-                f"reward={float(r['reward_signal']):.3f}, return={float(r['return_pct'] or 0)*100:.1f}%, "
+                f"reward={float(r['reward_signal']):.3f}, return={float(r['return_pct'] or 0) * 100:.1f}%, "
                 f"confidence_at_time={float(r['confidence'] or 0):.0%}"
             )
 
         context = (
             f"Last {len(rows)} trades on {ticker.upper()}:\n"
-            f"Avg reward: {sum(rewards)/len(rewards):.3f} | 90-day accuracy: {accuracy_90d:.0%}\n"
+            f"Avg reward: {sum(rewards) / len(rewards):.3f} | 90-day accuracy: {accuracy_90d:.0%}\n"
             + "\n".join(context_lines)
         )
 

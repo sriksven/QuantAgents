@@ -27,6 +27,9 @@ env:
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/quantagents-backend
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
 
 jobs:
   # ── Pre-flight checks ─────────────────────────────────────────────────────
@@ -297,10 +300,12 @@ jobs:
       - name: Notify success
         if: |
           needs.deploy-railway.result == 'success' &&
-          needs.smoke-tests.result == 'success'
+          needs.smoke-tests.result == 'success' &&
+          env.SLACK_BOT_TOKEN != '' &&
+          env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {
               "text": ":rocket: *QuantAgents Deployed Successfully*",
@@ -314,18 +319,20 @@ jobs:
                 ]
               }]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true
 
       - name: Notify failure
         if: |
-          needs.deploy-railway.result == 'failure' ||
-          needs.smoke-tests.result == 'failure' ||
-          needs.build.result == 'failure'
+          (
+            needs.deploy-railway.result == 'failure' ||
+            needs.smoke-tests.result == 'failure' ||
+            needs.build.result == 'failure'
+          ) &&
+          env.SLACK_BOT_TOKEN != '' &&
+          env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {
               "text": ":ambulance: *QuantAgents Deploy FAILED* — manual action required",
@@ -341,17 +348,13 @@ jobs:
                 ]
               }]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true
 
       - name: Notify rollback
-        if: needs.preflight.outputs.should_deploy == 'rollback'
+        if: needs.preflight.outputs.should_deploy == 'rollback' && env.SLACK_BOT_TOKEN != '' && env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {"text": ":rewind: *QuantAgents Model Rollback Executed* — reverted to previous model versions"}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true

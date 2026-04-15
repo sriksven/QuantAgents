@@ -2,6 +2,7 @@
 QuantAgents — LangGraph Graph Nodes (Phase 3)
 Node functions for the v1 orchestrator: memory loading + 2 research agents.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,12 +13,12 @@ from langchain_openai import ChatOpenAI
 from langfuse.langchain import CallbackHandler as LangfuseCallback
 
 from config import get_settings
-from orchestrator.state import AgentReport, FinSightState
 from orchestrator.prompts import (
     FUNDAMENTAL_ANALYST_SYSTEM,
     MARKET_RESEARCHER_SYSTEM,
     inject_context,
 )
+from orchestrator.state import AgentReport, FinSightState
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,12 @@ def _get_llm(model: str | None = None) -> ChatOpenAI:
 
 # ── Memory Tools ──────────────────────────────────────────────────────────────
 
+
 async def _load_episodic_memory(ticker: str) -> str:
     """Load past analyses for this ticker from Redis."""
     try:
         import redis.asyncio as aioredis
+
         settings = get_settings()
         r = aioredis.from_url(settings.redis_url, decode_responses=True)
         key = f"quantagents:memory:{ticker.upper()}:history"
@@ -71,6 +74,7 @@ async def _save_episodic_memory(ticker: str, summary: str) -> None:
     """Save analysis summary to Redis."""
     try:
         import redis.asyncio as aioredis
+
         settings = get_settings()
         r = aioredis.from_url(settings.redis_url, decode_responses=True)
         key = f"quantagents:memory:{ticker.upper()}:history"
@@ -86,6 +90,7 @@ async def _load_semantic_memory(ticker: str, query: str) -> str:
     try:
         from langchain_openai import OpenAIEmbeddings
         from qdrant_client import QdrantClient
+
         settings = get_settings()
 
         embeddings = OpenAIEmbeddings(api_key=settings.openai_api_key)
@@ -117,6 +122,7 @@ async def _load_semantic_memory(ticker: str, query: str) -> str:
 
 # ── Node Functions ────────────────────────────────────────────────────────────
 
+
 async def load_memory(state: FinSightState) -> dict[str, Any]:
     """
     Load episodic and semantic memory context before analysis starts.
@@ -125,11 +131,16 @@ async def load_memory(state: FinSightState) -> dict[str, Any]:
     ticker = state["ticker"]
     query = state.get("query") or f"{ticker} stock investment analysis"
 
-    episodic, semantic = await _load_episodic_memory(ticker), await _load_semantic_memory(ticker, query)
+    episodic, semantic = (
+        await _load_episodic_memory(ticker),
+        await _load_semantic_memory(ticker, query),
+    )
 
     logger.info(
         "Memory loaded for %s: episodic=%d chars, semantic=%d chars",
-        ticker, len(episodic), len(semantic),
+        ticker,
+        len(episodic),
+        len(semantic),
     )
     return {
         "episodic_context": episodic or None,
@@ -143,9 +154,9 @@ async def run_market_researcher(state: FinSightState) -> dict[str, Any]:
     Run the Market Researcher agent.
     Uses Tavily + Crawl4AI MCP tools for news and web research.
     """
+    from langchain_mcp_adapters.tools import load_mcp_tools
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from langchain_mcp_adapters.tools import load_mcp_tools
 
     ticker = state["ticker"]
     analysis_id = state["analysis_id"]
@@ -163,8 +174,7 @@ async def run_market_researcher(state: FinSightState) -> dict[str, Any]:
     llm = _get_llm()
 
     try:
-        from langchain_core.messages import SystemMessage, HumanMessage
-        from langchain.agents import create_tool_calling_agent, AgentExecutor
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         # Load tools from MCP servers
         tavily_params = StdioServerParameters(
@@ -173,23 +183,24 @@ async def run_market_researcher(state: FinSightState) -> dict[str, Any]:
         )
         tools = []
         try:
-            async with stdio_client(tavily_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = await load_mcp_tools(session)
+            async with (
+                stdio_client(tavily_params) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                tools = await load_mcp_tools(session)
         except Exception as exc:
             logger.warning("Could not load MCP tools for market researcher: %s", exc)
 
         # Build prompt and run agent
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Conduct a thorough market research analysis on {ticker}. Use your tools to search for recent news, sector developments, and macro factors."),
+            HumanMessage(
+                content=f"Conduct a thorough market research analysis on {ticker}. Use your tools to search for recent news, sector developments, and macro factors."
+            ),
         ]
 
-        if tools:
-            llm_with_tools = llm.bind_tools(tools)
-        else:
-            llm_with_tools = llm
+        llm_with_tools = llm.bind_tools(tools) if tools else llm
 
         callbacks = [callback] if callback else []
         response = await llm_with_tools.ainvoke(messages, config={"callbacks": callbacks})
@@ -199,6 +210,7 @@ async def run_market_researcher(state: FinSightState) -> dict[str, Any]:
         confidence = 0.65
         if "confidence" in content.lower():
             import re
+
             match = re.search(r"confidence[:\s]+(\d+)%", content, re.IGNORECASE)
             if match:
                 confidence = float(match.group(1)) / 100
@@ -210,7 +222,11 @@ async def run_market_researcher(state: FinSightState) -> dict[str, Any]:
             tools_used=["search_news", "get_article_content"] if tools else [],
             latency_ms=int((time.time() - t_start) * 1000),
         )
-        logger.info("Market Researcher completed in %.1fs with confidence=%.0f%%", time.time() - t_start, confidence * 100)
+        logger.info(
+            "Market Researcher completed in %.1fs with confidence=%.0f%%",
+            time.time() - t_start,
+            confidence * 100,
+        )
         return {"market_report": report}
 
     except Exception as exc:
@@ -229,9 +245,9 @@ async def run_fundamental_analyst(state: FinSightState) -> dict[str, Any]:
     Run the Fundamental Analyst agent.
     Uses Yahoo Finance + SEC EDGAR MCP tools.
     """
+    from langchain_mcp_adapters.tools import load_mcp_tools
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from langchain_mcp_adapters.tools import load_mcp_tools
 
     ticker = state["ticker"]
     analysis_id = state["analysis_id"]
@@ -248,27 +264,31 @@ async def run_fundamental_analyst(state: FinSightState) -> dict[str, Any]:
     llm = _get_llm()
 
     try:
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         # Load tools from Yahoo Finance + SEC EDGAR MCP servers
         tools = []
         for server_module in ["mcp_servers.yahoo_finance", "mcp_servers.sec_edgar"]:
             params = StdioServerParameters(command="python", args=["-m", server_module])
             try:
-                async with stdio_client(params) as (read, write):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        tools.extend(await load_mcp_tools(session))
+                async with (
+                    stdio_client(params) as (read, write),
+                    ClientSession(read, write) as session,
+                ):
+                    await session.initialize()
+                    tools.extend(await load_mcp_tools(session))
             except Exception as exc:
                 logger.warning("Could not load tools from %s: %s", server_module, exc)
 
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=(
-                f"Conduct a thorough fundamental analysis of {ticker}. "
-                f"Pull the latest financial statements, key ratios, and SEC filings. "
-                f"Assess the company's financial health, valuation, and business quality."
-            )),
+            HumanMessage(
+                content=(
+                    f"Conduct a thorough fundamental analysis of {ticker}. "
+                    f"Pull the latest financial statements, key ratios, and SEC filings. "
+                    f"Assess the company's financial health, valuation, and business quality."
+                )
+            ),
         ]
 
         llm_with_tools = llm.bind_tools(tools) if tools else llm
@@ -279,6 +299,7 @@ async def run_fundamental_analyst(state: FinSightState) -> dict[str, Any]:
         # Extract confidence
         confidence = 0.65
         import re
+
         match = re.search(r"confidence[:\s]+(\d+)%", content, re.IGNORECASE)
         if match:
             confidence = float(match.group(1)) / 100
@@ -332,10 +353,11 @@ async def save_to_memory(state: FinSightState) -> dict[str, Any]:
 
     # Save to Qdrant semantic memory
     try:
+        import uuid
+
         from langchain_openai import OpenAIEmbeddings
         from qdrant_client import QdrantClient
         from qdrant_client.models import PointStruct
-        import uuid
 
         settings = get_settings()
         embeddings = OpenAIEmbeddings(api_key=settings.openai_api_key)
@@ -345,7 +367,8 @@ async def save_to_memory(state: FinSightState) -> dict[str, Any]:
         try:
             client.get_collection(settings.qdrant_collection)
         except Exception:
-            from qdrant_client.models import VectorParams, Distance
+            from qdrant_client.models import Distance, VectorParams
+
             client.create_collection(
                 settings.qdrant_collection,
                 vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
@@ -355,17 +378,19 @@ async def save_to_memory(state: FinSightState) -> dict[str, Any]:
         for report in [market, fundamental]:
             if report and len(report.content) > 50:
                 vec = await embeddings.aembed_query(report.content[:1000])
-                points.append(PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=vec,
-                    payload={
-                        "ticker": ticker,
-                        "agent": report.agent_name,
-                        "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                        "finding": report.content[:500],
-                        "confidence": report.confidence,
-                    },
-                ))
+                points.append(
+                    PointStruct(
+                        id=str(uuid.uuid4()),
+                        vector=vec,
+                        payload={
+                            "ticker": ticker,
+                            "agent": report.agent_name,
+                            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                            "finding": report.content[:500],
+                            "confidence": report.confidence,
+                        },
+                    )
+                )
         if points:
             client.upsert(collection_name=settings.qdrant_collection, points=points)
         client.close()

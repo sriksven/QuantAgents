@@ -2,6 +2,7 @@
 QuantAgents — Model Analysis: SHAP sensitivity + LIME + bias detection
 Provides explainability and fairness checks for all 3 ML models.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,6 +22,7 @@ DATA_DIR = Path("data/training")
 
 
 # ── SHAP Sensitivity Analysis ─────────────────────────────────────────────────
+
 
 def shap_analysis(
     model_name: str,
@@ -56,6 +58,7 @@ def shap_analysis(
 
     # Encode categoricals
     from ml.train_models import _encode
+
     df = _encode(df)
     X = df[feature_cols].values[:n_explain]
 
@@ -77,10 +80,7 @@ def shap_analysis(
         shap_values = explainer.shap_values(X)
 
         # For multi-class, take class 1 SHAP values
-        if isinstance(shap_values, list):
-            sv = np.abs(shap_values[1])
-        else:
-            sv = np.abs(shap_values)
+        sv = np.abs(shap_values[1]) if isinstance(shap_values, list) else np.abs(shap_values)
 
         mean_abs_shap = {f: round(float(sv[:, i].mean()), 6) for i, f in enumerate(feature_cols)}
         sorted_features = sorted(mean_abs_shap.items(), key=lambda x: x[1], reverse=True)
@@ -99,6 +99,7 @@ def shap_analysis(
 
 
 # ── LIME Local Explainability ────────────────────────────────────────────────
+
 
 def lime_explain_instance(
     model_name: str,
@@ -123,7 +124,7 @@ def lime_explain_instance(
 
     model_path = MODEL_DIR / f"{model_name}.pkl"
     if not model_path.exists():
-        return {"error": f"Model not found", "model": model_name}
+        return {"error": "Model not found", "model": model_name}
 
     with open(model_path, "rb") as f:
         bundle = pickle.load(f)
@@ -132,21 +133,31 @@ def lime_explain_instance(
     data_path = DATA_DIR / f"{model_name}/train.parquet"
     df = pd.read_parquet(data_path)
     from ml.train_models import _encode
+
     df = _encode(df)
     X = df[feature_cols].values
 
     try:
         if model_name == "options_pricer":
             model = bundle["classifier"]
-            predict_fn = lambda x: model.predict_proba(x)
+
+            def predict_fn(x):
+                return model.predict_proba(x)
+
             mode = "classification"
         elif model_name == "reward_predictor":
             model = bundle["model"]
-            predict_fn = lambda x: model.predict(x)[:, 0]  # 30d reward
+
+            def predict_fn(x):
+                return model.predict(x)[:, 0]  # 30d reward
+
             mode = "regression"
         else:
             model = bundle["model"]
-            predict_fn = lambda x: model.predict_proba(x)
+
+            def predict_fn(x):
+                return model.predict_proba(x)
+
             mode = "classification"
 
         explainer = lime.lime_tabular.LimeTabularExplainer(
@@ -156,17 +167,18 @@ def lime_explain_instance(
             random_state=42,
         )
         instance = X[instance_idx]
-        exp = explainer.explain_instance(instance, predict_fn,
-                                         num_features=10, num_samples=n_samples)
-        contributions = [{"feature": f, "contribution": round(w, 6)}
-                         for f, w in exp.as_list()]
+        exp = explainer.explain_instance(
+            instance, predict_fn, num_features=10, num_samples=n_samples
+        )
+        contributions = [{"feature": f, "contribution": round(w, 6)} for f, w in exp.as_list()]
 
         return {
             "model": model_name,
             "instance_idx": instance_idx,
             "contributions": contributions,
             "predicted_class_or_value": (
-                str(model.predict_proba([instance])) if mode == "classification"
+                str(model.predict_proba([instance]))
+                if mode == "classification"
                 else str(predict_fn(instance.reshape(1, -1))[0])
             ),
         }
@@ -179,11 +191,11 @@ def lime_explain_instance(
 
 BIAS_DIMENSIONS = [
     "market_regime",
-    "iv_rank_bucket",    # options_pricer only
-    "action",            # confidence_calibrator / reward_predictor
+    "iv_rank_bucket",  # options_pricer only
+    "action",  # confidence_calibrator / reward_predictor
     "macro_vix_bucket",  # derived: low/medium/high VIX
     "sentiment_bucket",  # derived: negative/neutral/positive
-    "momentum_bucket",   # derived: bearish/neutral/bullish momentum
+    "momentum_bucket",  # derived: bearish/neutral/bullish momentum
 ]
 
 
@@ -206,12 +218,14 @@ def detect_bias(model_name: str) -> dict[str, Any]:
     data_path = DATA_DIR / f"{model_name}/train.parquet"
     df = pd.read_parquet(data_path)
     from ml.train_models import _encode
+
     df_enc = _encode(df.copy())
     X = df_enc[feature_cols].values
 
     # Get predictions and labels
     if model_name == "confidence_calibrator":
         from sklearn.metrics import roc_auc_score
+
         model = bundle["model"]
         y = df["true_correct"].values
         y_proba = model.predict_proba(X)[:, 1]
@@ -225,6 +239,7 @@ def detect_bias(model_name: str) -> dict[str, Any]:
 
     elif model_name == "reward_predictor":
         from sklearn.metrics import r2_score
+
         model = bundle["model"]
         Y = df[["reward_30d", "reward_60d", "reward_90d"]].values
         Y_pred = model.predict(X)
@@ -238,6 +253,7 @@ def detect_bias(model_name: str) -> dict[str, Any]:
 
     else:  # options_pricer
         from sklearn.metrics import f1_score
+
         model = bundle["classifier"]
         y = df["iv_rank_bucket"].values
         y_pred = model.predict(X)
@@ -274,8 +290,9 @@ def detect_bias(model_name: str) -> dict[str, Any]:
 
     # 3. VIX bucket (requires macro_vix in features)
     if "macro_vix" in df.columns:
-        df["_vix_bucket"] = pd.cut(df["macro_vix"], bins=[0, 20, 30, 100],
-                                    labels=["low", "medium", "high"])
+        df["_vix_bucket"] = pd.cut(
+            df["macro_vix"], bins=[0, 20, 30, 100], labels=["low", "medium", "high"]
+        )
         vix_results = {}
         for bucket in ["low", "medium", "high"]:
             mask = (df["_vix_bucket"] == bucket).values
@@ -286,8 +303,11 @@ def detect_bias(model_name: str) -> dict[str, Any]:
 
     # 4. Sentiment bucket
     if "sentiment_score" in df.columns:
-        df["_sent_bucket"] = pd.cut(df["sentiment_score"], bins=[-1, -0.3, 0.3, 1],
-                                     labels=["negative", "neutral", "positive"])
+        df["_sent_bucket"] = pd.cut(
+            df["sentiment_score"],
+            bins=[-1, -0.3, 0.3, 1],
+            labels=["negative", "neutral", "positive"],
+        )
         sent_results = {}
         for bucket in ["negative", "neutral", "positive"]:
             mask = (df["_sent_bucket"] == bucket).values
@@ -305,14 +325,16 @@ def detect_bias(model_name: str) -> dict[str, Any]:
         for group, value in dim_results.items():
             drop = overall_metric - value
             if drop > threshold:
-                flags.append({
-                    "dimension": dim,
-                    "group": group,
-                    "overall_metric": round(overall_metric, 4),
-                    "group_metric": value,
-                    "disparity": round(drop, 4),
-                    "severity": "HIGH" if drop > 0.10 else "MEDIUM",
-                })
+                flags.append(
+                    {
+                        "dimension": dim,
+                        "group": group,
+                        "overall_metric": round(overall_metric, 4),
+                        "group_metric": value,
+                        "disparity": round(drop, 4),
+                        "severity": "HIGH" if drop > 0.10 else "MEDIUM",
+                    }
+                )
 
     max_disparity = max((f["disparity"] for f in flags), default=0.0)
 
@@ -325,13 +347,13 @@ def detect_bias(model_name: str) -> dict[str, Any]:
         "max_disparity": round(max_disparity, 4),
         "bias_detected": len(flags) > 0,
         "bias_severity": (
-            "HIGH" if any(f["severity"] == "HIGH" for f in flags)
-            else "MEDIUM" if flags else "NONE"
+            "HIGH" if any(f["severity"] == "HIGH" for f in flags) else "MEDIUM" if flags else "NONE"
         ),
     }
 
 
 # ── Run all ──────────────────────────────────────────────────────────────────
+
 
 def analyze_all_models() -> dict[str, dict]:
     """Run SHAP + bias detection for all 3 models."""

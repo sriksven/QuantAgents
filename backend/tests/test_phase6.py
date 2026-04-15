@@ -1,6 +1,7 @@
 """
 Phase 6 tests — options strategy selection, Greeks, IV decision matrix, graph v4 routing.
 """
+
 from __future__ import annotations
 
 import math
@@ -11,9 +12,11 @@ sys.path.insert(0, ".")
 
 # ─── Black-Scholes Greeks tests ───────────────────────────────────────────────
 
+
 class TestBlackScholes:
     def test_call_price_itm(self):
         from services.options_strategy import black_scholes_call
+
         # Deep ITM call: S >> K → price ≈ S - K
         result = black_scholes_call(S=200, K=150, T=0.25, r=0.05, sigma=0.25)
         assert result["price"] > 49.0  # intrinsic value ~50, time value adds to it
@@ -21,6 +24,7 @@ class TestBlackScholes:
 
     def test_call_price_atm(self):
         from services.options_strategy import black_scholes_call
+
         result = black_scholes_call(S=100, K=100, T=0.25, r=0.05, sigma=0.25)
         assert result["price"] > 0
         # ATM delta ≈ 0.5-0.6
@@ -28,6 +32,7 @@ class TestBlackScholes:
 
     def test_put_price_via_parity(self):
         from services.options_strategy import black_scholes_call, black_scholes_put
+
         S, K, T, r, sigma = 100, 100, 0.25, 0.05, 0.25
         call = black_scholes_call(S, K, T, r, sigma)
         put = black_scholes_put(S, K, T, r, sigma)
@@ -38,31 +43,37 @@ class TestBlackScholes:
 
     def test_put_delta_negative(self):
         from services.options_strategy import black_scholes_put
+
         result = black_scholes_put(S=100, K=100, T=0.25, r=0.05, sigma=0.25)
         # Put delta should be between -1 and 0
         assert -1.0 < result["delta"] < 0
 
     def test_zero_tte_returns_zero(self):
         from services.options_strategy import black_scholes_call
+
         result = black_scholes_call(S=100, K=100, T=0, r=0.05, sigma=0.25)
         assert result["price"] == 0.0
 
     def test_vega_positive(self):
         from services.options_strategy import black_scholes_call
+
         result = black_scholes_call(S=100, K=100, T=0.25, r=0.05, sigma=0.25)
         assert result["vega"] > 0
 
     def test_theta_negative(self):
         from services.options_strategy import black_scholes_call
+
         result = black_scholes_call(S=100, K=100, T=0.25, r=0.05, sigma=0.25)
         assert result["theta"] < 0  # time decay hurts long options
 
 
 # ─── Options strategy selection tests ────────────────────────────────────────
 
+
 class TestOptionsStrategySelection:
     def _select(self, direction, iv_rank, price=100.0):
         from services.options_strategy import select_options_strategy
+
         return select_options_strategy(direction, iv_rank, current_price=price)
 
     def test_buy_low_iv_gives_long_call(self):
@@ -125,9 +136,11 @@ class TestOptionsStrategySelection:
 
 # ─── Position sizing tests ────────────────────────────────────────────────────
 
+
 class TestOptionsPositionSizing:
     def test_basic_sizing(self):
         from services.options_strategy import compute_options_position_size
+
         result = compute_options_position_size(
             strategy_name="bull_call_spread",
             net_debit_per_share=2.50,
@@ -139,6 +152,7 @@ class TestOptionsPositionSizing:
 
     def test_no_trade_returns_zero(self):
         from services.options_strategy import compute_options_position_size
+
         result = compute_options_position_size(
             strategy_name="no_options_trade",
             net_debit_per_share=0.0,
@@ -151,6 +165,7 @@ class TestOptionsPositionSizing:
     def test_credit_spread_skipped(self):
         """Negative net_debit (credit received) should return 0 contracts."""
         from services.options_strategy import compute_options_position_size
+
         result = compute_options_position_size(
             strategy_name="bull_put_spread",
             net_debit_per_share=-1.50,
@@ -162,21 +177,26 @@ class TestOptionsPositionSizing:
 
 # ─── Graph v4 routing tests ───────────────────────────────────────────────────
 
+
 class TestGraphV4Routing:
     def _base_state(self):
         from orchestrator.state import initial_state
+
         return initial_state("AAPL")
 
     def _make_rec(self, action="BUY", confidence=0.75):
         from orchestrator.state import TradeRecommendation
+
         return TradeRecommendation(action=action, confidence=confidence)
 
     def _make_backtest(self, validated=True):
         from orchestrator.state import BacktestResult
+
         return BacktestResult(validated=validated)
 
     def _make_options(self, strategy="bull_put_spread", confidence=0.70, win_rate=0.62):
         from orchestrator.state import OptionsRecommendation
+
         return OptionsRecommendation(
             strategy_name=strategy,
             direction="BUY",
@@ -189,6 +209,7 @@ class TestGraphV4Routing:
 
     def test_stock_wins_when_validated(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = self._make_rec("BUY")
         state["backtest_result"] = self._make_backtest(validated=True)
@@ -197,6 +218,7 @@ class TestGraphV4Routing:
 
     def test_options_wins_when_backtest_fails(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = self._make_rec("BUY")
         state["backtest_result"] = self._make_backtest(validated=False)
@@ -205,6 +227,7 @@ class TestGraphV4Routing:
 
     def test_save_when_hold_no_options(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = self._make_rec("HOLD")
         state["options_recommendation"] = None
@@ -212,19 +235,24 @@ class TestGraphV4Routing:
 
     def test_options_executed_on_hold_if_compelling(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = self._make_rec("HOLD")
-        state["options_recommendation"] = self._make_options("iron_condor", confidence=0.65, win_rate=0.60)
+        state["options_recommendation"] = self._make_options(
+            "iron_condor", confidence=0.65, win_rate=0.60
+        )
         assert select_execution_path(state) == "options_executor"
 
     def test_save_when_no_recommendation(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = None
         assert select_execution_path(state) == "save_memory"
 
     def test_save_when_both_fail(self):
         from orchestrator.graph_v4 import select_execution_path
+
         state = self._base_state()
         state["recommendation"] = self._make_rec("BUY")
         state["backtest_result"] = self._make_backtest(validated=False)

@@ -1,4 +1,5 @@
 """Alembic environment configuration."""
+
 import asyncio
 import os
 from logging.config import fileConfig
@@ -16,8 +17,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://quantagents:quantagents_secret@localhost:5432/quantagents"
+    "DATABASE_URL", "postgresql+asyncpg://quantagents:quantagents_secret@localhost:5432/quantagents"
 )
 
 

@@ -3,6 +3,7 @@ QuantAgents — Phase 4 Agent Nodes
 Technical Analyst, Risk Assessor (with debate loop), Portfolio Strategist.
 Extends orchestrator/nodes.py from Phase 3.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,47 +13,45 @@ import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
-from config import get_settings
+from orchestrator.nodes import _get_langfuse_callback, _get_llm, _save_episodic_memory
+from orchestrator.prompts import (
+    PORTFOLIO_STRATEGIST_SYSTEM,
+    RISK_ASSESSOR_SYSTEM,
+    TECHNICAL_ANALYST_SYSTEM,
+    inject_context,
+)
 from orchestrator.state import (
     AgentReport,
+    Catalyst,
     Challenge,
     FinSightState,
     ScenarioTarget,
-    Catalyst,
     TradeRecommendation,
 )
-from orchestrator.prompts import (
-    TECHNICAL_ANALYST_SYSTEM,
-    RISK_ASSESSOR_SYSTEM,
-    PORTFOLIO_STRATEGIST_SYSTEM,
-    inject_context,
-)
-from orchestrator.nodes import _get_langfuse_callback, _get_llm, _save_episodic_memory
 
 logger = logging.getLogger(__name__)
 
 
 # ── Helper: load MCP tools (graceful fallback) ────────────────────────────────
 
+
 async def _load_tools_from_servers(servers: list[str]) -> list:
     """
     Try to load tools from multiple MCP stdio servers.
     Returns empty list if MCP unavailable (graceful fallback).
     """
+    from langchain_mcp_adapters.tools import load_mcp_tools
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from langchain_mcp_adapters.tools import load_mcp_tools
 
     tools = []
     for module in servers:
         params = StdioServerParameters(command="python", args=["-m", module])
         try:
-            async with stdio_client(params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools.extend(await load_mcp_tools(session))
+            async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+                await session.initialize()
+                tools.extend(await load_mcp_tools(session))
         except Exception as exc:
             logger.warning("Could not load MCP tools from %s: %s", module, exc)
     return tools
@@ -67,6 +66,7 @@ def _extract_confidence(content: str, default: float = 0.65) -> float:
 
 # ── Technical Analyst ─────────────────────────────────────────────────────────
 
+
 async def run_technical_analyst(state: FinSightState) -> dict[str, Any]:
     """
     Technical Analyst agent: price action, indicators, chart patterns, options market.
@@ -77,25 +77,31 @@ async def run_technical_analyst(state: FinSightState) -> dict[str, Any]:
     t_start = time.time()
 
     episodic = state.get("episodic_context") or ""
-    system_prompt = inject_context(TECHNICAL_ANALYST_SYSTEM, ticker=ticker, episodic_context=episodic)
+    system_prompt = inject_context(
+        TECHNICAL_ANALYST_SYSTEM, ticker=ticker, episodic_context=episodic
+    )
     callback = _get_langfuse_callback("technical_analyst", analysis_id)
     llm = _get_llm()
 
-    tools = await _load_tools_from_servers([
-        "mcp_servers.alpha_vantage",
-        "mcp_servers.yahoo_finance",
-        "mcp_servers.python_executor",
-    ])
+    tools = await _load_tools_from_servers(
+        [
+            "mcp_servers.alpha_vantage",
+            "mcp_servers.yahoo_finance",
+            "mcp_servers.python_executor",
+        ]
+    )
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=(
-            f"Conduct a thorough technical analysis of {ticker}. "
-            f"Fetch all key indicators (RSI, MACD, Bollinger Bands, SMA 50/200, ATR). "
-            f"Identify the primary trend, key support/resistance levels, chart patterns. "
-            f"Analyze the options market (IV rank, put/call ratio, unusual activity). "
-            f"Use the Python executor to compute any custom correlations or statistics needed."
-        )),
+        HumanMessage(
+            content=(
+                f"Conduct a thorough technical analysis of {ticker}. "
+                f"Fetch all key indicators (RSI, MACD, Bollinger Bands, SMA 50/200, ATR). "
+                f"Identify the primary trend, key support/resistance levels, chart patterns. "
+                f"Analyze the options market (IV rank, put/call ratio, unusual activity). "
+                f"Use the Python executor to compute any custom correlations or statistics needed."
+            )
+        ),
     ]
 
     try:
@@ -129,14 +135,13 @@ async def run_technical_analyst(state: FinSightState) -> dict[str, Any]:
 
 # ── Risk Assessor ─────────────────────────────────────────────────────────────
 
+
 async def run_risk_assessor(state: FinSightState) -> dict[str, Any]:
     """
     Risk Assessor: reads all three reports, generates adversarial challenges.
     Returns updated challenges list and optionally initiates debate responses.
     """
-    ticker = state["ticker"]
     analysis_id = state["analysis_id"]
-    t_start = time.time()
 
     market = state.get("market_report")
     fundamental = state.get("fundamental_report")
@@ -160,10 +165,12 @@ async def run_risk_assessor(state: FinSightState) -> dict[str, Any]:
     try:
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=(
-                "Review all three research reports and produce your challenge list. "
-                "Return ONLY valid JSON as specified - no additional text outside the JSON block."
-            )),
+            HumanMessage(
+                content=(
+                    "Review all three research reports and produce your challenge list. "
+                    "Return ONLY valid JSON as specified - no additional text outside the JSON block."
+                )
+            ),
         ]
         callbacks = [callback] if callback else []
         response = await llm.ainvoke(messages, config={"callbacks": callbacks})
@@ -180,20 +187,23 @@ async def run_risk_assessor(state: FinSightState) -> dict[str, Any]:
                 assessment = parsed.get("overall_assessment", "PROCEED")
 
                 for ch_data in parsed.get("challenges", []):
-                    challenges.append(Challenge(
-                        to_agent=ch_data.get("to_agent", "market_researcher"),
-                        debate_round=state.get("debate_rounds", 0) + 1,
-                        question=ch_data.get("question", ""),
-                        cited_claim=ch_data.get("cited_claim", ""),
-                        supporting_evidence=ch_data.get("supporting_evidence", ""),
-                    ))
+                    challenges.append(
+                        Challenge(
+                            to_agent=ch_data.get("to_agent", "market_researcher"),
+                            debate_round=state.get("debate_rounds", 0) + 1,
+                            question=ch_data.get("question", ""),
+                            cited_claim=ch_data.get("cited_claim", ""),
+                            supporting_evidence=ch_data.get("supporting_evidence", ""),
+                        )
+                    )
         except (json.JSONDecodeError, KeyError) as exc:
             logger.warning("Risk Assessor JSON parse failed: %s — using empty challenges", exc)
 
         existing = state.get("challenges") or []
         logger.info(
             "Risk Assessor found %d challenges. Assessment: %s",
-            len(challenges), assessment,
+            len(challenges),
+            assessment,
         )
         return {
             "challenges": existing + challenges,
@@ -206,6 +216,7 @@ async def run_risk_assessor(state: FinSightState) -> dict[str, Any]:
 
 
 # ── Debate Response Loop ──────────────────────────────────────────────────────
+
 
 async def run_debate_responses(state: FinSightState) -> dict[str, Any]:
     """
@@ -229,9 +240,18 @@ async def run_debate_responses(state: FinSightState) -> dict[str, Any]:
 
     # Get the relevant report text for each agent's response context
     report_map = {
-        "market_researcher": (state.get("market_report") or AgentReport(agent_name="market_researcher", content="", confidence=0)).content,
-        "fundamental_analyst": (state.get("fundamental_report") or AgentReport(agent_name="fundamental_analyst", content="", confidence=0)).content,
-        "technical_analyst": (state.get("technical_report") or AgentReport(agent_name="technical_analyst", content="", confidence=0)).content,
+        "market_researcher": (
+            state.get("market_report")
+            or AgentReport(agent_name="market_researcher", content="", confidence=0)
+        ).content,
+        "fundamental_analyst": (
+            state.get("fundamental_report")
+            or AgentReport(agent_name="fundamental_analyst", content="", confidence=0)
+        ).content,
+        "technical_analyst": (
+            state.get("technical_report")
+            or AgentReport(agent_name="technical_analyst", content="", confidence=0)
+        ).content,
     }
 
     updated_challenges = list(state.get("challenges") or [])
@@ -240,23 +260,27 @@ async def run_debate_responses(state: FinSightState) -> dict[str, Any]:
         report_text = report_map.get(agent_name, "")
         callback = _get_langfuse_callback(f"debate_{agent_name}", analysis_id)
 
-        challenge_text = "\n\n".join([
-            f"**Challenge {i+1} (Severity: {ch.cited_claim[:100] if ch.cited_claim else 'unspecified'}):**\n"
-            f"Cited claim: {ch.cited_claim}\n"
-            f"Question: {ch.question}\n"
-            f"Counter-evidence: {ch.supporting_evidence}"
-            for i, ch in enumerate(agent_challenges)
-        ])
+        challenge_text = "\n\n".join(
+            [
+                f"**Challenge {i + 1} (Severity: {ch.cited_claim[:100] if ch.cited_claim else 'unspecified'}):**\n"
+                f"Cited claim: {ch.cited_claim}\n"
+                f"Question: {ch.question}\n"
+                f"Counter-evidence: {ch.supporting_evidence}"
+                for i, ch in enumerate(agent_challenges)
+            ]
+        )
 
         messages = [
-            SystemMessage(content=(
-                f"You are the {agent_name.replace('_', ' ').title()} agent. "
-                f"Your previous report on {ticker} is shown below. "
-                f"The Risk Assessor has raised challenges you must respond to. "
-                f"Address each challenge directly with specific evidence and data. "
-                f"Maintain or revise your position based on the counter-evidence.\n\n"
-                f"**Your Previous Report (excerpt):**\n{report_text[:2000]}"
-            )),
+            SystemMessage(
+                content=(
+                    f"You are the {agent_name.replace('_', ' ').title()} agent. "
+                    f"Your previous report on {ticker} is shown below. "
+                    f"The Risk Assessor has raised challenges you must respond to. "
+                    f"Address each challenge directly with specific evidence and data. "
+                    f"Maintain or revise your position based on the counter-evidence.\n\n"
+                    f"**Your Previous Report (excerpt):**\n{report_text[:2000]}"
+                )
+            ),
             HumanMessage(content=f"Please respond to these challenges:\n\n{challenge_text}"),
         ]
         try:
@@ -269,7 +293,11 @@ async def run_debate_responses(state: FinSightState) -> dict[str, Any]:
                 for i, existing_ch in enumerate(updated_challenges):
                     if existing_ch.id == ch.id:
                         updated_challenges[i] = Challenge(
-                            **{**ch.model_dump(), "response": response_text[:1500], "resolved": True}
+                            **{
+                                **ch.model_dump(),
+                                "response": response_text[:1500],
+                                "resolved": True,
+                            }
                         )
         except Exception as exc:
             logger.error("Debate response failed for %s: %s", agent_name, exc)
@@ -285,6 +313,7 @@ async def run_debate_responses(state: FinSightState) -> dict[str, Any]:
 
 
 # ── Portfolio Strategist ──────────────────────────────────────────────────────
+
 
 async def run_portfolio_strategist(state: FinSightState) -> dict[str, Any]:
     """
@@ -306,8 +335,12 @@ async def run_portfolio_strategist(state: FinSightState) -> dict[str, Any]:
     if resolved:
         parts = []
         for ch in resolved[:5]:
-            parts.append(f"• {ch.to_agent}: '{ch.cited_claim[:100]}' → Response: {(ch.response or '')[:300]}")
-        debate_summary = "Debate resolved " + str(len(resolved)) + " challenges:\n" + "\n".join(parts)
+            parts.append(
+                f"• {ch.to_agent}: '{ch.cited_claim[:100]}' → Response: {(ch.response or '')[:300]}"
+            )
+        debate_summary = (
+            "Debate resolved " + str(len(resolved)) + " challenges:\n" + "\n".join(parts)
+        )
     else:
         debate_summary = "No challenges raised by Risk Assessor."
 
@@ -326,10 +359,12 @@ async def run_portfolio_strategist(state: FinSightState) -> dict[str, Any]:
     try:
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=(
-                f"Synthesize all research on {ticker} and produce the final recommendation JSON. "
-                f"Return ONLY the JSON object — no surrounding text or markdown."
-            )),
+            HumanMessage(
+                content=(
+                    f"Synthesize all research on {ticker} and produce the final recommendation JSON. "
+                    f"Return ONLY the JSON object — no surrounding text or markdown."
+                )
+            ),
         ]
         callbacks = [callback] if callback else []
         response = await llm.ainvoke(messages, config={"callbacks": callbacks})
@@ -342,12 +377,10 @@ async def run_portfolio_strategist(state: FinSightState) -> dict[str, Any]:
             if json_match:
                 data = json.loads(json_match.group())
                 scenarios = [
-                    ScenarioTarget(**s) for s in data.get("scenarios", [])
-                    if isinstance(s, dict)
+                    ScenarioTarget(**s) for s in data.get("scenarios", []) if isinstance(s, dict)
                 ]
                 catalysts = [
-                    Catalyst(**c) for c in data.get("catalysts", [])
-                    if isinstance(c, dict)
+                    Catalyst(**c) for c in data.get("catalysts", []) if isinstance(c, dict)
                 ]
                 recommendation = TradeRecommendation(
                     action=data.get("action", "HOLD"),
@@ -362,7 +395,9 @@ async def run_portfolio_strategist(state: FinSightState) -> dict[str, Any]:
                     risk_factors=data.get("risk_factors", []),
                 )
         except (json.JSONDecodeError, Exception) as exc:
-            logger.warning("Portfolio Strategist JSON parse failed: %s — creating HOLD default", exc)
+            logger.warning(
+                "Portfolio Strategist JSON parse failed: %s — creating HOLD default", exc
+            )
             recommendation = TradeRecommendation(
                 action="HOLD",
                 confidence=0.5,

@@ -2,6 +2,7 @@
 QuantAgents — Tavily News MCP Server
 Exposes 2 tools powered by the Tavily search API.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,10 +20,12 @@ def _get_client():
     if not api_key:
         raise ValueError("TAVILY_API_KEY environment variable not set")
     from tavily import TavilyClient
+
     return TavilyClient(api_key=api_key)
 
 
 # ── Tool 1: Search News ───────────────────────────────────────────────────────
+
 
 @mcp.tool()
 def search_news(
@@ -69,14 +72,16 @@ def search_news(
             if url in seen_urls:
                 continue
             seen_urls.add(url)
-            articles.append({
-                "title": item.get("title", ""),
-                "url": url,
-                "content": item.get("content", "")[:800],
-                "published_date": item.get("published_date", ""),
-                "relevance_score": round(float(item.get("score", 0)), 3),
-                "source": url.split("/")[2] if "/" in url else url,
-            })
+            articles.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": url,
+                    "content": item.get("content", "")[:800],
+                    "published_date": item.get("published_date", ""),
+                    "relevance_score": round(float(item.get("score", 0)), 3),
+                    "source": url.split("/")[2] if "/" in url else url,
+                }
+            )
 
         return {
             "query": query,
@@ -90,6 +95,7 @@ def search_news(
 
 
 # ── Tool 2: Get Article Content ───────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_article_content(url: str) -> dict[str, Any]:
@@ -114,7 +120,7 @@ def get_article_content(url: str) -> dict[str, Any]:
         return {
             "url": url,
             "title": item.get("title", ""),
-            "content": item.get("raw_content", "")[:5000],   # truncate to 5k chars
+            "content": item.get("raw_content", "")[:5000],  # truncate to 5k chars
             "metadata": {
                 "author": item.get("author", ""),
                 "published_date": item.get("published_date", ""),

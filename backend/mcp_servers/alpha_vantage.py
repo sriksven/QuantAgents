@@ -3,6 +3,7 @@ QuantAgents — Alpha Vantage MCP Server
 Exposes 4 tools: technical indicators (SMA, EMA, RSI, MACD),
 economic indicators, historical OHLCV, and earnings data.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,13 +34,17 @@ def _av_get(params: dict) -> dict[str, Any]:
         if "Error Message" in data:
             return {"error": data["Error Message"]}
         if "Note" in data:
-            return {"error": "Alpha Vantage rate limit reached. Retry shortly.", "note": data["Note"]}
+            return {
+                "error": "Alpha Vantage rate limit reached. Retry shortly.",
+                "note": data["Note"],
+            }
         return data
     except Exception as exc:
         return {"error": str(exc)}
 
 
 # ── Tool 1: Get Technical Indicators ─────────────────────────────────────────
+
 
 @mcp.tool()
 def get_technical_indicators(
@@ -65,7 +70,15 @@ def get_technical_indicators(
         time.sleep(RATE_LIMIT)
         try:
             if indicator == "RSI":
-                data = _av_get({"function": "RSI", "symbol": ticker, "interval": interval, "time_period": 14, "series_type": "close"})
+                data = _av_get(
+                    {
+                        "function": "RSI",
+                        "symbol": ticker,
+                        "interval": interval,
+                        "time_period": 14,
+                        "series_type": "close",
+                    }
+                )
                 series = data.get("Technical Analysis: RSI", {})
                 if series:
                     latest_date = max(series.keys())
@@ -73,10 +86,21 @@ def get_technical_indicators(
                     results["indicators"]["RSI"] = {
                         "value": rsi_val,
                         "date": latest_date,
-                        "signal": "overbought" if rsi_val > 70 else "oversold" if rsi_val < 30 else "neutral",
+                        "signal": "overbought"
+                        if rsi_val > 70
+                        else "oversold"
+                        if rsi_val < 30
+                        else "neutral",
                     }
             elif indicator == "MACD":
-                data = _av_get({"function": "MACD", "symbol": ticker, "interval": interval, "series_type": "close"})
+                data = _av_get(
+                    {
+                        "function": "MACD",
+                        "symbol": ticker,
+                        "interval": interval,
+                        "series_type": "close",
+                    }
+                )
                 series = data.get("Technical Analysis: MACD", {})
                 if series:
                     latest_date = max(series.keys())
@@ -93,8 +117,16 @@ def get_technical_indicators(
                     }
             elif indicator.startswith("SMA"):
                 period = int(indicator[3:]) if len(indicator) > 3 else 20
-                data = _av_get({"function": "SMA", "symbol": ticker, "interval": interval, "time_period": period, "series_type": "close"})
-                series = data.get(f"Technical Analysis: SMA", {})
+                data = _av_get(
+                    {
+                        "function": "SMA",
+                        "symbol": ticker,
+                        "interval": interval,
+                        "time_period": period,
+                        "series_type": "close",
+                    }
+                )
+                series = data.get("Technical Analysis: SMA", {})
                 if series:
                     latest_date = max(series.keys())
                     results["indicators"][indicator] = {
@@ -103,7 +135,15 @@ def get_technical_indicators(
                     }
             elif indicator.startswith("EMA"):
                 period = int(indicator[3:]) if len(indicator) > 3 else 9
-                data = _av_get({"function": "EMA", "symbol": ticker, "interval": interval, "time_period": period, "series_type": "close"})
+                data = _av_get(
+                    {
+                        "function": "EMA",
+                        "symbol": ticker,
+                        "interval": interval,
+                        "time_period": period,
+                        "series_type": "close",
+                    }
+                )
                 series = data.get("Technical Analysis: EMA", {})
                 if series:
                     latest_date = max(series.keys())
@@ -112,7 +152,15 @@ def get_technical_indicators(
                         "date": latest_date,
                     }
             elif indicator == "BBANDS":
-                data = _av_get({"function": "BBANDS", "symbol": ticker, "interval": interval, "time_period": 20, "series_type": "close"})
+                data = _av_get(
+                    {
+                        "function": "BBANDS",
+                        "symbol": ticker,
+                        "interval": interval,
+                        "time_period": 20,
+                        "series_type": "close",
+                    }
+                )
                 series = data.get("Technical Analysis: BBANDS", {})
                 if series:
                     latest_date = max(series.keys())
@@ -124,7 +172,9 @@ def get_technical_indicators(
                         "date": latest_date,
                     }
             elif indicator == "ADX":
-                data = _av_get({"function": "ADX", "symbol": ticker, "interval": interval, "time_period": 14})
+                data = _av_get(
+                    {"function": "ADX", "symbol": ticker, "interval": interval, "time_period": 14}
+                )
                 series = data.get("Technical Analysis: ADX", {})
                 if series:
                     latest_date = max(series.keys())
@@ -141,6 +191,7 @@ def get_technical_indicators(
 
 
 # ── Tool 2: Get Historical OHLCV ─────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_historical_ohlcv(
@@ -159,14 +210,24 @@ def get_historical_ohlcv(
     Returns:
         Dict with list of OHLCV records sorted newest-first
     """
-    func_map = {"daily": "TIME_SERIES_DAILY", "weekly": "TIME_SERIES_WEEKLY", "monthly": "TIME_SERIES_MONTHLY"}
-    key_map = {"daily": "Time Series (Daily)", "weekly": "Weekly Time Series", "monthly": "Monthly Time Series"}
+    func_map = {
+        "daily": "TIME_SERIES_DAILY",
+        "weekly": "TIME_SERIES_WEEKLY",
+        "monthly": "TIME_SERIES_MONTHLY",
+    }
+    key_map = {
+        "daily": "Time Series (Daily)",
+        "weekly": "Weekly Time Series",
+        "monthly": "Monthly Time Series",
+    }
 
-    data = _av_get({
-        "function": func_map.get(interval, "TIME_SERIES_DAILY"),
-        "symbol": ticker.upper(),
-        "outputsize": outputsize,
-    })
+    data = _av_get(
+        {
+            "function": func_map.get(interval, "TIME_SERIES_DAILY"),
+            "symbol": ticker.upper(),
+            "outputsize": outputsize,
+        }
+    )
 
     if "error" in data:
         return data
@@ -174,19 +235,27 @@ def get_historical_ohlcv(
     series = data.get(key_map.get(interval, "Time Series (Daily)"), {})
     records = []
     for date_str, row in sorted(series.items(), reverse=True)[:60]:
-        records.append({
-            "date": date_str,
-            "open": float(row.get("1. open", 0)),
-            "high": float(row.get("2. high", 0)),
-            "low": float(row.get("3. low", 0)),
-            "close": float(row.get("4. close", 0)),
-            "volume": int(row.get("5. volume", 0)),
-        })
+        records.append(
+            {
+                "date": date_str,
+                "open": float(row.get("1. open", 0)),
+                "high": float(row.get("2. high", 0)),
+                "low": float(row.get("3. low", 0)),
+                "close": float(row.get("4. close", 0)),
+                "volume": int(row.get("5. volume", 0)),
+            }
+        )
 
-    return {"ticker": ticker.upper(), "interval": interval, "records": records, "count": len(records)}
+    return {
+        "ticker": ticker.upper(),
+        "interval": interval,
+        "records": records,
+        "count": len(records),
+    }
 
 
 # ── Tool 3: Get Economic Indicators ──────────────────────────────────────────
+
 
 @mcp.tool()
 def get_economic_indicators(indicators: str = "CPI,FEDFUNDS,UNEMPLOYMENT,T10Y2Y") -> dict[str, Any]:
@@ -200,10 +269,14 @@ def get_economic_indicators(indicators: str = "CPI,FEDFUNDS,UNEMPLOYMENT,T10Y2Y"
         Dict with each indicator's latest value and trend
     """
     func_map = {
-        "CPI": "CPI", "FEDFUNDS": "FEDERAL_FUNDS_RATE",
-        "UNEMPLOYMENT": "UNEMPLOYMENT", "T10Y2Y": "TREASURY_YIELD",
-        "REAL_GDP": "REAL_GDP", "INFLATION": "INFLATION",
-        "RETAIL_SALES": "RETAIL_SALES", "NONFARM_PAYROLL": "NONFARM_PAYROLL",
+        "CPI": "CPI",
+        "FEDFUNDS": "FEDERAL_FUNDS_RATE",
+        "UNEMPLOYMENT": "UNEMPLOYMENT",
+        "T10Y2Y": "TREASURY_YIELD",
+        "REAL_GDP": "REAL_GDP",
+        "INFLATION": "INFLATION",
+        "RETAIL_SALES": "RETAIL_SALES",
+        "NONFARM_PAYROLL": "NONFARM_PAYROLL",
     }
     results: dict[str, Any] = {}
     for ind in [i.strip().upper() for i in indicators.split(",")]:
@@ -223,7 +296,13 @@ def get_economic_indicators(indicators: str = "CPI,FEDFUNDS,UNEMPLOYMENT,T10Y2Y"
             try:
                 curr_val = float(latest.get("value", 0))
                 prev_val = float(prev.get("value", 0))
-                trend = "rising" if curr_val > prev_val else "falling" if curr_val < prev_val else "flat"
+                trend = (
+                    "rising"
+                    if curr_val > prev_val
+                    else "falling"
+                    if curr_val < prev_val
+                    else "flat"
+                )
             except (ValueError, TypeError):
                 curr_val, trend = None, "unknown"
             results[ind] = {"value": curr_val, "date": latest.get("date"), "trend": trend}
@@ -234,6 +313,7 @@ def get_economic_indicators(indicators: str = "CPI,FEDFUNDS,UNEMPLOYMENT,T10Y2Y"
 
 
 # ── Tool 4: Get Earnings Data ─────────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_earnings_data(ticker: str) -> dict[str, Any]:
@@ -257,8 +337,6 @@ def get_earnings_data(ticker: str) -> dict[str, Any]:
     beat_count = miss_count = 0
     for q in quarterly:
         try:
-            reported = float(q.get("reportedEPS", 0) or 0)
-            estimated = float(q.get("estimatedEPS", 0) or 0)
             surprise = float(q.get("surprisePercentage", 0) or 0)
             if surprise > 0:
                 beat_count += 1

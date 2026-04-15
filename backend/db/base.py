@@ -1,6 +1,7 @@
 """
 QuantAgents — Async SQLAlchemy Engine + Session Factory
 """
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,

@@ -2,10 +2,10 @@
 QuantAgents — Configuration
 Loaded from environment variables using pydantic-settings.
 """
-from functools import lru_cache
-from typing import Literal
 
-from pydantic import AnyUrl, Field, field_validator
+from functools import lru_cache
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

@@ -3,21 +3,23 @@ QuantAgents — LangGraph State Schema
 Forward-compatible TypedDict covering all 8 agents.
 Unimplemented agent fields default to None so the graph is composable phase-by-phase.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
-
 # ── Sub-models ────────────────────────────────────────────────────────────────
+
 
 class AgentReport(BaseModel):
     """Output produced by a single research agent."""
+
     agent_name: str
     content: str
     confidence: float = Field(ge=0.0, le=1.0)
@@ -28,6 +30,7 @@ class AgentReport(BaseModel):
 
 class Challenge(BaseModel):
     """Risk Assessor challenge directed at another agent."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     from_agent: str = "risk_assessor"
     to_agent: str
@@ -35,13 +38,14 @@ class Challenge(BaseModel):
     question: str
     response: str | None = None
     resolved: bool = False
-    cited_claim: str = ""         # exact claim being challenged
-    supporting_evidence: str = "" # evidence from another report
+    cited_claim: str = ""  # exact claim being challenged
+    supporting_evidence: str = ""  # evidence from another report
 
 
 class ScenarioTarget(BaseModel):
     """Bull / base / bear scenario."""
-    label: str                          # "bull" | "base" | "bear"
+
+    label: str  # "bull" | "base" | "bear"
     probability: float = Field(ge=0.0, le=1.0)
     price_target: float | None = None
     return_pct: float | None = None
@@ -51,12 +55,13 @@ class ScenarioTarget(BaseModel):
 class Catalyst(BaseModel):
     description: str
     date_estimate: str = ""
-    impact: str = ""              # "positive" | "negative" | "neutral"
+    impact: str = ""  # "positive" | "negative" | "neutral"
 
 
 class TradeRecommendation(BaseModel):
     """Final BUY/HOLD/SELL recommendation from Portfolio Strategist."""
-    action: str                         # "BUY" | "HOLD" | "SELL"
+
+    action: str  # "BUY" | "HOLD" | "SELL"
     confidence: float = Field(ge=0.0, le=1.0)
     entry_price: float | None = None
     stop_loss: float | None = None
@@ -70,22 +75,24 @@ class TradeRecommendation(BaseModel):
 
 class OptionsLeg(BaseModel):
     """A single options contract leg."""
-    action: str                         # "buy" | "sell"
-    option_type: str                    # "call" | "put"
+
+    action: str  # "buy" | "sell"
+    option_type: str  # "call" | "put"
     strike: float
-    expiry: str                         # YYYY-MM-DD
+    expiry: str  # YYYY-MM-DD
     contracts: int = 1
 
 
 class OptionsRecommendation(BaseModel):
     """Options strategy recommendation (Phase 6)."""
-    strategy_name: str                      # e.g. "bull_call_spread", "iron_condor", "no_options_trade"
-    direction: str = "HOLD"                 # "BUY" | "SELL" | "HOLD"
-    iv_rank: float = 50.0                   # IV rank [0-100]
-    iv_environment: str = "moderate"        # "low" | "moderate" | "high"
+
+    strategy_name: str  # e.g. "bull_call_spread", "iron_condor", "no_options_trade"
+    direction: str = "HOLD"  # "BUY" | "SELL" | "HOLD"
+    iv_rank: float = 50.0  # IV rank [0-100]
+    iv_environment: str = "moderate"  # "low" | "moderate" | "high"
     legs: list[Any] = Field(default_factory=list)  # list of leg dicts or OptionsLeg
     net_debit_per_share: float = 0.0
-    net_debit_per_contract: float = 0.0     # net_debit_per_share × 100
+    net_debit_per_contract: float = 0.0  # net_debit_per_share × 100
     max_profit_per_contract: float | None = None
     max_loss_per_contract: float | None = None
     breakeven: float | None = None
@@ -103,6 +110,7 @@ class OptionsRecommendation(BaseModel):
 
 class BacktestResult(BaseModel):
     """Output from the Backtest Engine agent."""
+
     strategy_description: str = ""
     period: str = ""
     win_rate: float | None = None
@@ -114,7 +122,7 @@ class BacktestResult(BaseModel):
     calmar_ratio: float | None = None
     expectancy_per_trade: float | None = None
     total_trades: int = 0
-    validated: bool = False             # True = passes minimum thresholds
+    validated: bool = False  # True = passes minimum thresholds
     rejection_reason: str | None = None
     monte_carlo_5th_pct: float | None = None
     monte_carlo_95th_pct: float | None = None
@@ -122,6 +130,7 @@ class BacktestResult(BaseModel):
 
 class QuantumAllocation(BaseModel):
     """Portfolio allocation from Quantum Optimizer agent."""
+
     ticker: str
     quantum_weight: float = Field(ge=0.0, le=1.0)
     classical_weight: float = Field(ge=0.0, le=1.0)
@@ -129,33 +138,35 @@ class QuantumAllocation(BaseModel):
     classical_sharpe: float | None = None
     quantum_var_95: float | None = None
     classical_var_95: float | None = None
-    divergence_note: str = ""           # if quantum != classical, explain why
+    divergence_note: str = ""  # if quantum != classical, explain why
 
 
 # ── Main State ───────────────────────────────────────────────────────────────
+
 
 class FinSightState(TypedDict):
     """
     LangGraph state for a single analysis session.
     All agent-specific fields are | None so they can be populated incrementally.
     """
+
     # ── Input ──────────────────────────────────────────────────────────────
     analysis_id: str
     ticker: str
     user_id: str
-    query: str | None                   # optional user override ("focus on earnings")
+    query: str | None  # optional user override ("focus on earnings")
 
     # ── Message history (LangGraph managed) ──────────────────────────────
     messages: Annotated[list[BaseMessage], add_messages]
 
     # ── Memory context (loaded before analysis starts) ────────────────────
-    episodic_context: str | None        # Redis: past analyses for this ticker
-    semantic_context: str | None        # Qdrant: similar past insights
+    episodic_context: str | None  # Redis: past analyses for this ticker
+    semantic_context: str | None  # Qdrant: similar past insights
 
     # ── Phase 3: Research agent reports ───────────────────────────────────
     market_report: AgentReport | None
     fundamental_report: AgentReport | None
-    technical_report: AgentReport | None     # Phase 4
+    technical_report: AgentReport | None  # Phase 4
 
     # ── Phase 4: Debate ────────────────────────────────────────────────────
     challenges: list[Challenge]
@@ -171,19 +182,20 @@ class FinSightState(TypedDict):
 
     # ── Phase 5: Trading ──────────────────────────────────────────────────
     backtest_result: BacktestResult | None
-    rl_context: str | None              # RL reward history (past trade accuracy)
+    rl_context: str | None  # RL reward history (past trade accuracy)
     order_placed: bool
     order_id: str | None
     order_details: dict[str, Any] | None
 
     # ── Control ────────────────────────────────────────────────────────────
-    current_phase: str                  # "research" | "debate" | "strategy" | "execution"
+    current_phase: str  # "research" | "debate" | "strategy" | "execution"
     error: str | None
 
 
 def initial_state(ticker: str, user_id: str = "default", query: str | None = None) -> FinSightState:
     """Create a fresh initial state for a new analysis."""
     import uuid
+
     return FinSightState(
         analysis_id=str(uuid.uuid4()),
         ticker=ticker.upper().strip(),

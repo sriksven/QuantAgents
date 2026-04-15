@@ -1,19 +1,20 @@
 """Initial migration — create all 9 QuantAgents tables.
 
 Revision ID: 0001
-Revises: 
+Revises:
 Create Date: 2026-03-28
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -38,7 +39,12 @@ def upgrade() -> None:
     op.create_table(
         "agent_reports",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "analysis_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("analyses.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("agent_name", sa.String(100), nullable=False),
         sa.Column("content", sa.Text, nullable=False),
         sa.Column("tools_used", postgresql.JSON),
@@ -52,7 +58,12 @@ def upgrade() -> None:
     op.create_table(
         "challenges",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "analysis_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("analyses.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("debate_round", sa.Integer, server_default="1"),
         sa.Column("from_agent", sa.String(100), nullable=False),
         sa.Column("to_agent", sa.String(100), nullable=False),
@@ -67,7 +78,11 @@ def upgrade() -> None:
     op.create_table(
         "trades",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("analyses.id", ondelete="SET NULL")),
+        sa.Column(
+            "analysis_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("analyses.id", ondelete="SET NULL"),
+        ),
         sa.Column("ticker", sa.String(20), nullable=False, index=True),
         sa.Column("asset_type", sa.String(20), server_default="stock"),
         sa.Column("side", sa.String(10), nullable=False),
@@ -91,7 +106,13 @@ def upgrade() -> None:
     op.create_table(
         "trade_reasoning",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("trade_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("trades.id", ondelete="CASCADE"), nullable=False, unique=True),
+        sa.Column(
+            "trade_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("trades.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
         sa.Column("agent_chain", postgresql.JSON, nullable=False),
         sa.Column("confidence", sa.Float),
         sa.Column("backtest_metrics", postgresql.JSON),
@@ -105,7 +126,12 @@ def upgrade() -> None:
     op.create_table(
         "reward_signals",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("trade_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("trades.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "trade_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("trades.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("check_date", sa.DateTime(timezone=True), nullable=False),
         sa.Column("days_elapsed", sa.Integer, nullable=False),
         sa.Column("actual_price", sa.Float),

@@ -2,6 +2,7 @@
 QuantAgents — Crawl4AI MCP Server
 Web scraping using Crawl4AI for analyst reports, company pages, and SEC documents.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,8 +17,7 @@ mcp = FastMCP("crawl4ai")
 async def _crawl(url: str, extract_structured: bool = False) -> dict[str, Any]:
     """Internal async crawl helper."""
     try:
-        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-        from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
+        from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
         browser_cfg = BrowserConfig(headless=True, verbose=False)
         run_cfg = CrawlerRunConfig(cache_mode=CacheMode.ENABLED)
@@ -43,6 +43,7 @@ async def _crawl(url: str, extract_structured: bool = False) -> dict[str, Any]:
 
 # ── Tool 1: Scrape URL ────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def scrape_url(url: str, max_chars: int = 6000) -> dict[str, Any]:
     """
@@ -64,6 +65,7 @@ async def scrape_url(url: str, max_chars: int = 6000) -> dict[str, Any]:
 
 
 # ── Tool 2: Extract Structured Data ──────────────────────────────────────────
+
 
 @mcp.tool()
 async def extract_structured_data(url: str, schema_description: str) -> dict[str, Any]:

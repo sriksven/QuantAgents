@@ -1,18 +1,21 @@
 """
 Phase 3 tests — state schema, MCP server tools, and API endpoint.
 """
+
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import ValidationError
 
-
 # ─── State schema tests ────────────────────────────────────────────────────────
+
 
 class TestFinSightState:
     def test_initial_state_defaults(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import initial_state
 
@@ -29,6 +32,7 @@ class TestFinSightState:
 
     def test_ticker_uppercase(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import initial_state
 
@@ -37,6 +41,7 @@ class TestFinSightState:
 
     def test_agent_report_confidence_bounds(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import AgentReport
 
@@ -51,6 +56,7 @@ class TestFinSightState:
 
     def test_trade_recommendation_actions(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import TradeRecommendation
 
@@ -61,6 +67,7 @@ class TestFinSightState:
 
     def test_challenge_has_id(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import Challenge
 
@@ -72,6 +79,7 @@ class TestFinSightState:
 
     def test_backtest_result_defaults(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.state import BacktestResult
 
@@ -83,9 +91,11 @@ class TestFinSightState:
 
 # ─── Prompt injection tests ────────────────────────────────────────────────────
 
+
 class TestPromptInjection:
     def test_inject_context_basic(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.prompts import inject_context
 
@@ -95,6 +105,7 @@ class TestPromptInjection:
 
     def test_inject_missing_key_becomes_empty(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.prompts import inject_context
 
@@ -105,6 +116,7 @@ class TestPromptInjection:
 
     def test_market_researcher_prompt_has_required_sections(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.prompts import MARKET_RESEARCHER_SYSTEM, inject_context
 
@@ -114,6 +126,7 @@ class TestPromptInjection:
 
     def test_fundamental_analyst_prompt_has_required_sections(self):
         import sys
+
         sys.path.insert(0, ".")
         from orchestrator.prompts import FUNDAMENTAL_ANALYST_SYSTEM, inject_context
 
@@ -124,10 +137,12 @@ class TestPromptInjection:
 
 # ─── MCP server tools (unit tests, no API calls) ──────────────────────────────
 
+
 class TestYahooFinanceMCPTools:
     @patch("yfinance.Ticker")
     def test_get_stock_quote_success(self, mock_ticker_cls):
         import sys
+
         sys.path.insert(0, ".")
         mock_info = {
             "regularMarketPrice": 182.5,
@@ -142,6 +157,7 @@ class TestYahooFinanceMCPTools:
         mock_ticker_cls.return_value = mock_ticker
 
         from mcp_servers.yahoo_finance import get_stock_quote
+
         result = get_stock_quote("AAPL")
         assert result["ticker"] == "AAPL"
         assert result["price"] == 182.5
@@ -151,18 +167,21 @@ class TestYahooFinanceMCPTools:
     @patch("yfinance.Ticker")
     def test_get_stock_quote_missing_price(self, mock_ticker_cls):
         import sys
+
         sys.path.insert(0, ".")
         mock_ticker = MagicMock()
         mock_ticker.info = {}  # empty info
         mock_ticker_cls.return_value = mock_ticker
 
         from mcp_servers.yahoo_finance import get_stock_quote
+
         result = get_stock_quote("FAKE123")
         assert "error" in result
 
     @patch("yfinance.Ticker")
     def test_get_key_ratios_returns_expected_keys(self, mock_ticker_cls):
         import sys
+
         sys.path.insert(0, ".")
         mock_ticker = MagicMock()
         mock_ticker.info = {
@@ -175,6 +194,7 @@ class TestYahooFinanceMCPTools:
         mock_ticker_cls.return_value = mock_ticker
 
         from mcp_servers.yahoo_finance import get_key_ratios
+
         result = get_key_ratios("AAPL")
         assert "pe_trailing" in result
         assert "net_margin" in result
@@ -187,6 +207,7 @@ class TestTavilyMCPTools:
     @patch("mcp_servers.tavily_news._get_client")
     def test_search_news_success(self, mock_get_client):
         import sys
+
         sys.path.insert(0, ".")
         mock_client = MagicMock()
         mock_client.search.return_value = {
@@ -204,6 +225,7 @@ class TestTavilyMCPTools:
         mock_get_client.return_value = mock_client
 
         from mcp_servers.tavily_news import search_news
+
         result = search_news("AAPL stock earnings")
         assert result["article_count"] == 1
         assert result["articles"][0]["title"] == "Apple Reports Record Earnings"

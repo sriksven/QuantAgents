@@ -3,9 +3,9 @@ QuantAgents — Yahoo Finance MCP Server
 Exposes 5 tools wrapping yfinance for stock quotes, financials,
 key ratios, options chains, and sector peers.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -17,6 +17,7 @@ mcp = FastMCP("yahoo-finance")
 
 
 # ── Tool 1: Get Stock Quote ────────────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_stock_quote(ticker: str) -> dict[str, Any]:
@@ -63,6 +64,7 @@ def get_stock_quote(ticker: str) -> dict[str, Any]:
 
 
 # ── Tool 2: Get Financial Statements ─────────────────────────────────────────
+
 
 @mcp.tool()
 def get_financials(ticker: str, period: str = "annual") -> dict[str, Any]:
@@ -111,6 +113,7 @@ def get_financials(ticker: str, period: str = "annual") -> dict[str, Any]:
 
 
 # ── Tool 3: Get Key Ratios ────────────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_key_ratios(ticker: str) -> dict[str, Any]:
@@ -166,6 +169,7 @@ def get_key_ratios(ticker: str) -> dict[str, Any]:
 
 # ── Tool 4: Get Options Chain ─────────────────────────────────────────────────
 
+
 @mcp.tool()
 def get_options_chain(ticker: str, expiry: str | None = None) -> dict[str, Any]:
     """
@@ -192,23 +196,25 @@ def get_options_chain(ticker: str, expiry: str | None = None) -> dict[str, Any]:
                 return []
             records = []
             for _, row in df.iterrows():
-                records.append({
-                    "contractSymbol": row.get("contractSymbol", ""),
-                    "strike": float(row.get("strike", 0)),
-                    "lastPrice": float(row.get("lastPrice", 0) or 0),
-                    "bid": float(row.get("bid", 0) or 0),
-                    "ask": float(row.get("ask", 0) or 0),
-                    "volume": int(row.get("volume", 0) or 0),
-                    "openInterest": int(row.get("openInterest", 0) or 0),
-                    "impliedVolatility": float(row.get("impliedVolatility", 0) or 0),
-                    "delta": float(row.get("delta", 0) or 0) if "delta" in row else None,
-                    "gamma": float(row.get("gamma", 0) or 0) if "gamma" in row else None,
-                    "theta": float(row.get("theta", 0) or 0) if "theta" in row else None,
-                    "vega": float(row.get("vega", 0) or 0) if "vega" in row else None,
-                    "inTheMoney": bool(row.get("inTheMoney", False)),
-                    "option_type": opt_type,
-                    "expiry": target_expiry,
-                })
+                records.append(
+                    {
+                        "contractSymbol": row.get("contractSymbol", ""),
+                        "strike": float(row.get("strike", 0)),
+                        "lastPrice": float(row.get("lastPrice", 0) or 0),
+                        "bid": float(row.get("bid", 0) or 0),
+                        "ask": float(row.get("ask", 0) or 0),
+                        "volume": int(row.get("volume", 0) or 0),
+                        "openInterest": int(row.get("openInterest", 0) or 0),
+                        "impliedVolatility": float(row.get("impliedVolatility", 0) or 0),
+                        "delta": float(row.get("delta", 0) or 0) if "delta" in row else None,
+                        "gamma": float(row.get("gamma", 0) or 0) if "gamma" in row else None,
+                        "theta": float(row.get("theta", 0) or 0) if "theta" in row else None,
+                        "vega": float(row.get("vega", 0) or 0) if "vega" in row else None,
+                        "inTheMoney": bool(row.get("inTheMoney", False)),
+                        "option_type": opt_type,
+                        "expiry": target_expiry,
+                    }
+                )
             return records
 
         calls = chain_to_list(chain.calls, "call")
@@ -233,6 +239,7 @@ def get_options_chain(ticker: str, expiry: str | None = None) -> dict[str, Any]:
 
 
 # ── Tool 5: Get Sector Peers ──────────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_sector_peers(ticker: str) -> dict[str, Any]:
@@ -264,14 +271,16 @@ def get_sector_peers(ticker: str) -> dict[str, Any]:
         for peer in peer_tickers[:5]:
             try:
                 peer_info = yf.Ticker(peer).info
-                peers.append({
-                    "ticker": peer,
-                    "name": peer_info.get("longName", ""),
-                    "market_cap": peer_info.get("marketCap"),
-                    "pe_trailing": peer_info.get("trailingPE"),
-                    "revenue_growth": peer_info.get("revenueGrowth"),
-                    "profit_margin": peer_info.get("profitMargins"),
-                })
+                peers.append(
+                    {
+                        "ticker": peer,
+                        "name": peer_info.get("longName", ""),
+                        "market_cap": peer_info.get("marketCap"),
+                        "pe_trailing": peer_info.get("trailingPE"),
+                        "revenue_growth": peer_info.get("revenueGrowth"),
+                        "profit_margin": peer_info.get("profitMargins"),
+                    }
+                )
             except Exception:
                 pass
 
@@ -287,5 +296,4 @@ def get_sector_peers(ticker: str) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    import asyncio
     mcp.run()

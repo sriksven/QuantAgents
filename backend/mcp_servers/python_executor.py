@@ -4,6 +4,7 @@ Safely runs financial analysis Python snippets in a sandboxed subprocess.
 Used by the Technical Analyst for custom indicator calculations and by
 the Backtest Engine for running vectorbt strategy scripts.
 """
+
 from __future__ import annotations
 
 import ast
@@ -24,12 +25,29 @@ TIMEOUT_SECONDS = 30
 MAX_OUTPUT_CHARS = 8000
 
 # Allowed top-level imports (blocklist-based sandbox)
-BLOCKED_IMPORTS = frozenset([
-    "os", "subprocess", "sys", "shutil", "pathlib", "socket",
-    "requests", "urllib", "http", "ftplib", "smtplib",
-    "importlib", "ctypes", "multiprocessing", "threading",
-    "__builtins__", "eval", "exec", "compile",
-])
+BLOCKED_IMPORTS = frozenset(
+    [
+        "os",
+        "subprocess",
+        "sys",
+        "shutil",
+        "pathlib",
+        "socket",
+        "requests",
+        "urllib",
+        "http",
+        "ftplib",
+        "smtplib",
+        "importlib",
+        "ctypes",
+        "multiprocessing",
+        "threading",
+        "__builtins__",
+        "eval",
+        "exec",
+        "compile",
+    ]
+)
 
 
 def _check_safe(code: str) -> tuple[bool, str]:
@@ -57,9 +75,18 @@ def _check_safe(code: str) -> tuple[bool, str]:
                     return False, f"Blocked import from: {node.module}"
 
         # Block open(), exec(), eval() calls
-        elif isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id in ("open", "exec", "eval", "compile"):
-                return False, f"Blocked built-in call: {node.func.id}()"
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id
+            in (
+                "open",
+                "exec",
+                "eval",
+                "compile",
+            )
+        ):
+            return False, f"Blocked built-in call: {node.func.id}()"
 
     return True, ""
 
@@ -85,7 +112,12 @@ def run_python(code: str, packages: str = "") -> dict[str, Any]:
     """
     is_safe, reason = _check_safe(code)
     if not is_safe:
-        return {"success": False, "error": f"Code rejected by safety check: {reason}", "stdout": "", "stderr": ""}
+        return {
+            "success": False,
+            "error": f"Code rejected by safety check: {reason}",
+            "stdout": "",
+            "stderr": "",
+        }
 
     # Prepend standard financial analysis imports
     preamble = textwrap.dedent("""
@@ -108,7 +140,9 @@ def run_python(code: str, packages: str = "") -> dict[str, Any]:
     """)
 
     # Add any extra requested packages (filtered)
-    extra_safe = [p.strip() for p in packages.split(",") if p.strip() and p.strip() not in BLOCKED_IMPORTS]
+    extra_safe = [
+        p.strip() for p in packages.split(",") if p.strip() and p.strip() not in BLOCKED_IMPORTS
+    ]
     for pkg in extra_safe:
         preamble += f"\ntry:\n    import {pkg}\nexcept ImportError:\n    pass\n"
 
@@ -135,7 +169,12 @@ def run_python(code: str, packages: str = "") -> dict[str, Any]:
             "return_code": result.returncode,
         }
     except subprocess.TimeoutExpired:
-        return {"success": False, "error": f"Code timed out after {TIMEOUT_SECONDS}s", "stdout": "", "stderr": ""}
+        return {
+            "success": False,
+            "error": f"Code timed out after {TIMEOUT_SECONDS}s",
+            "stdout": "",
+            "stderr": "",
+        }
     except Exception as exc:
         return {"success": False, "error": str(exc), "stdout": "", "stderr": ""}
     finally:

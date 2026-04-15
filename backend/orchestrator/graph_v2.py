@@ -32,6 +32,7 @@ Topology:
                   │
                 END
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,24 +40,25 @@ from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator.state import FinSightState
 from orchestrator.nodes import (
     load_memory,
-    run_market_researcher,
     run_fundamental_analyst,
+    run_market_researcher,
     save_to_memory,
 )
 from orchestrator.nodes_phase4 import (
-    run_technical_analyst,
-    run_risk_assessor,
     run_debate_responses,
     run_portfolio_strategist,
+    run_risk_assessor,
+    run_technical_analyst,
 )
+from orchestrator.state import FinSightState
 
 logger = logging.getLogger(__name__)
 
 
 # ── Conditional edge functions ────────────────────────────────────────────────
+
 
 def should_debate(state: FinSightState) -> str:
     """
@@ -86,6 +88,7 @@ def debate_or_strategy(state: FinSightState) -> str:
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
 
+
 def build_graph_v2():
     """
     Build and compile the Phase 4 LangGraph graph.
@@ -114,16 +117,24 @@ def build_graph_v2():
     graph.add_edge("technical_analyst", "risk_assessor")
 
     # ── Conditional: debate or skip to strategy ───────────────────────────────
-    graph.add_conditional_edges("risk_assessor", should_debate, {
-        "debate_responses": "debate_responses",
-        "portfolio_strategist": "portfolio_strategist",
-    })
+    graph.add_conditional_edges(
+        "risk_assessor",
+        should_debate,
+        {
+            "debate_responses": "debate_responses",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
 
     # ── Conditional: more debate rounds or move on ────────────────────────────
-    graph.add_conditional_edges("debate_responses", debate_or_strategy, {
-        "risk_assessor": "risk_assessor",         # re-assess after responses
-        "portfolio_strategist": "portfolio_strategist",
-    })
+    graph.add_conditional_edges(
+        "debate_responses",
+        debate_or_strategy,
+        {
+            "risk_assessor": "risk_assessor",  # re-assess after responses
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
 
     # ── Strategist → memory → END ─────────────────────────────────────────────
     graph.add_edge("portfolio_strategist", "save_memory")

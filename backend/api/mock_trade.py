@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/mock-trade", tags=["Mock Trading"])
 
+
 class OrderRequest(BaseModel):
     ticker: str
     side: str
     qty: float
     price: float
+
 
 @router.get("/portfolio")
 async def get_mock_portfolio(
@@ -42,16 +44,15 @@ async def get_mock_portfolio(
     return {
         "cash_balance": portfolio.cash_balance,
         "positions": [
-            {
-                "ticker": p.ticker,
-                "qty": p.qty,
-                "average_entry_price": p.average_entry_price
-            } for p in positions
-        ]
+            {"ticker": p.ticker, "qty": p.qty, "average_entry_price": p.average_entry_price}
+            for p in positions
+        ],
     }
+
 
 class FundRequest(BaseModel):
     amount: float
+
 
 @router.post("/fund")
 async def add_mock_funds(
@@ -76,6 +77,7 @@ async def add_mock_funds(
 
     return {"status": "success", "new_balance": portfolio.cash_balance}
 
+
 @router.post("/order")
 async def execute_mock_order(
     order: OrderRequest,
@@ -91,7 +93,11 @@ async def execute_mock_order(
         portfolio = MockPortfolio(user_id=user_id, cash_balance=100000.0)
         db.add(portfolio)
 
-    pos_result = await db.execute(select(MockPosition).where(MockPosition.user_id == user_id, MockPosition.ticker == order.ticker))
+    pos_result = await db.execute(
+        select(MockPosition).where(
+            MockPosition.user_id == user_id, MockPosition.ticker == order.ticker
+        )
+    )
     position = pos_result.scalars().first()
 
     total_value = order.qty * order.price
@@ -106,7 +112,9 @@ async def execute_mock_order(
             position.qty += order.qty
             position.average_entry_price = total_cost / position.qty
         else:
-            position = MockPosition(user_id=user_id, ticker=order.ticker, qty=order.qty, average_entry_price=order.price)
+            position = MockPosition(
+                user_id=user_id, ticker=order.ticker, qty=order.qty, average_entry_price=order.price
+            )
             db.add(position)
 
     elif order.side.upper() == "SELL":
@@ -127,15 +135,20 @@ async def execute_mock_order(
         side=order.side.upper(),
         qty=order.qty,
         price=order.price,
-        value=total_value
+        value=total_value,
     )
     db.add(mock_trade)
 
     await db.commit()
 
-    return {"status": "success", "message": f"{order.side.upper()} order processed for {order.qty} shares of {order.ticker}."}
+    return {
+        "status": "success",
+        "message": f"{order.side.upper()} order processed for {order.qty} shares of {order.ticker}.",
+    }
+
 
 # Note: We rely on Alpaca frontend integration for live quotes. If the frontend wants a backend proxy it can be added here.
+
 
 @router.get("/quote/{ticker}")
 async def get_quote(ticker: str):
@@ -144,7 +157,7 @@ async def get_quote(ticker: str):
     url = f"https://data.alpaca.markets/v2/stocks/{ticker}/quotes/latest"
     headers = {
         "APCA-API-KEY-ID": settings.alpaca_api_key,
-        "APCA-API-SECRET-KEY": settings.alpaca_secret_key
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
     }
 
     async with httpx.AsyncClient() as client:
@@ -152,7 +165,7 @@ async def get_quote(ticker: str):
 
     if response.status_code != 200:
         # Fallback to simulated data or raise error
-        return {"price": 150.0} # Fallback for now if rate limited / market close
+        return {"price": 150.0}  # Fallback for now if rate limited / market close
 
     data = response.json()
     if "quote" in data and "ap" in data["quote"]:

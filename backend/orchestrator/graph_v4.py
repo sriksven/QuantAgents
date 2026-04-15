@@ -23,6 +23,7 @@ Full Phase 6 topology:
       │
   save_memory → END
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,17 +32,28 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator.state import FinSightState
-from orchestrator.nodes import load_memory, run_market_researcher, run_fundamental_analyst, save_to_memory
-from orchestrator.nodes_phase4 import run_technical_analyst, run_risk_assessor, run_debate_responses, run_portfolio_strategist
+from orchestrator.graph_v3 import load_rl_context
+from orchestrator.nodes import (
+    load_memory,
+    run_fundamental_analyst,
+    run_market_researcher,
+    save_to_memory,
+)
+from orchestrator.nodes_phase4 import (
+    run_debate_responses,
+    run_portfolio_strategist,
+    run_risk_assessor,
+    run_technical_analyst,
+)
 from orchestrator.nodes_phase5 import run_backtest_engine, run_trade_executor
 from orchestrator.nodes_phase6 import run_options_analyst
-from orchestrator.graph_v3 import load_rl_context
+from orchestrator.state import FinSightState
 
 logger = logging.getLogger(__name__)
 
 
 # ── Routing functions (carried over + extended) ───────────────────────────────
+
 
 def should_debate(state: FinSightState) -> str:
     challenges = state.get("challenges") or []
@@ -51,7 +63,11 @@ def should_debate(state: FinSightState) -> str:
 def debate_or_strategy(state: FinSightState) -> str:
     if state.get("debate_rounds", 0) >= state.get("max_debate_rounds", 2):
         return "portfolio_strategist"
-    return "risk_assessor" if any(not c.resolved for c in (state.get("challenges") or [])) else "portfolio_strategist"
+    return (
+        "risk_assessor"
+        if any(not c.resolved for c in (state.get("challenges") or []))
+        else "portfolio_strategist"
+    )
 
 
 def select_execution_path(state: FinSightState) -> str:
@@ -67,7 +83,11 @@ def select_execution_path(state: FinSightState) -> str:
 
     if not rec or rec.action == "HOLD":
         # Check if options makes sense on its own (iron condor etc.)
-        if options_rec and options_rec.strategy_name != "no_options_trade" and options_rec.confidence >= 0.55:
+        if (
+            options_rec
+            and options_rec.strategy_name != "no_options_trade"
+            and options_rec.confidence >= 0.55
+        ):
             return "options_executor"
         return "save_memory"
 
@@ -91,6 +111,7 @@ def select_execution_path(state: FinSightState) -> str:
 
 # ── Options Executor node ──────────────────────────────────────────────────────
 
+
 async def run_options_executor(state: FinSightState) -> dict[str, Any]:
     """
     Execute the options trade via Alpaca options orders (paper trading).
@@ -102,11 +123,16 @@ async def run_options_executor(state: FinSightState) -> dict[str, Any]:
     analysis_id = state["analysis_id"]
 
     if not options_rec:
-        return {"order_placed": False, "order_id": None, "order_details": {"veto_reason": "No options recommendation"}}
+        return {
+            "order_placed": False,
+            "order_id": None,
+            "order_details": {"veto_reason": "No options recommendation"},
+        }
 
     # Log to trade journal (options trade)
     try:
         from mcp_servers.trade_journal import log_trade
+
         result = await log_trade(
             analysis_id=analysis_id,
             ticker=ticker,
@@ -119,7 +145,10 @@ async def run_options_executor(state: FinSightState) -> dict[str, Any]:
         order_id = result.get("trade_id")
         logger.info(
             "Options Executor: logged %s × %d contracts for %s (journal_id=%s)",
-            options_rec.strategy_name, options_rec.contracts_suggested, ticker, order_id,
+            options_rec.strategy_name,
+            options_rec.contracts_suggested,
+            ticker,
+            order_id,
         )
     except Exception as exc:
         logger.warning("Options Executor journal log failed: %s", exc)
@@ -146,6 +175,7 @@ async def run_options_executor(state: FinSightState) -> dict[str, Any]:
 
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
+
 
 def build_graph_v4():
     """Build and compile the Phase 6 graph."""
@@ -182,14 +212,22 @@ def build_graph_v4():
     graph.add_edge("technical_analyst", "risk_assessor")
 
     # ── Conditional debate ────────────────────────────────────────────────────
-    graph.add_conditional_edges("risk_assessor", should_debate, {
-        "debate_responses": "debate_responses",
-        "portfolio_strategist": "portfolio_strategist",
-    })
-    graph.add_conditional_edges("debate_responses", debate_or_strategy, {
-        "risk_assessor": "risk_assessor",
-        "portfolio_strategist": "portfolio_strategist",
-    })
+    graph.add_conditional_edges(
+        "risk_assessor",
+        should_debate,
+        {
+            "debate_responses": "debate_responses",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
+    graph.add_conditional_edges(
+        "debate_responses",
+        debate_or_strategy,
+        {
+            "risk_assessor": "risk_assessor",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
 
     # ── Parallel validation: backtest + options ───────────────────────────────
     graph.add_edge("portfolio_strategist", "backtest_engine")

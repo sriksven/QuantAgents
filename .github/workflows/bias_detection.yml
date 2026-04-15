@@ -13,6 +13,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
 
 jobs:
   check-bias:
@@ -153,10 +156,10 @@ jobs:
       # ── Notifications ─────────────────────────────────────────────────────
 
       - name: Notify — bias detected (non-blocking)
-        if: success()
+        if: success() && env.SLACK_BOT_TOKEN != '' && env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {
               "text": ":mag: *Bias Detection Passed* — no HIGH severity bias",
@@ -169,15 +172,13 @@ jobs:
                 ]
               }]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true
 
       - name: Notify — HIGH bias blocks deploy
-        if: failure()
+        if: failure() && env.SLACK_BOT_TOKEN != '' && env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {
               "text": ":rotating_light: *HIGH BIAS DETECTED — Deploy Blocked*",
@@ -189,6 +190,4 @@ jobs:
                 ]
               }]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true

@@ -7,6 +7,7 @@ Models:
   2. Reward Predictor       — XGBoost regressor, multi-target (30/60/90d rewards)
   3. Options Pricer         — XGBoost multi-class (IV rank bucket 0/1/2)
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,9 +46,11 @@ def _encode(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Optuna + XGBoost training helpers ─────────────────────────────────────────
 
+
 def _xgb_trial_params(trial) -> dict[str, Any]:
     """Shared Optuna search space for XGBoost."""
     import optuna  # noqa
+
     return {
         "n_estimators": trial.suggest_int("n_estimators", 100, 600),
         "max_depth": trial.suggest_int("max_depth", 3, 8),
@@ -66,6 +69,7 @@ def _xgb_trial_params(trial) -> dict[str, Any]:
 
 # ── Model 1: Confidence Calibrator ────────────────────────────────────────────
 
+
 def train_confidence_calibrator(
     n_trials: int = 30,
     cv_folds: int = 5,
@@ -76,12 +80,10 @@ def train_confidence_calibrator(
     Also trains isotonic regression as a calibration wrapper.
     """
     import optuna
-    import mlflow
-    from sklearn.model_selection import StratifiedKFold, cross_val_score
-    from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.metrics import roc_auc_score, brier_score_loss
-    from sklearn.preprocessing import LabelEncoder
     import xgboost as xgb
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import brier_score_loss, roc_auc_score
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -99,10 +101,8 @@ def train_confidence_calibrator(
         scores = cross_val_score(model, X, y, cv=cv, scoring="roc_auc")
         return scores.mean()
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.TPESampler(seed=42))
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
-    best_params = {**_xgb_trial_params(study.best_trial)}  # reconstruct from trial
 
     # Train final model with best params
     xgb_model = xgb.XGBClassifier(
@@ -115,8 +115,11 @@ def train_confidence_calibrator(
         gamma=study.best_params["gamma"],
         reg_alpha=study.best_params["reg_alpha"],
         reg_lambda=study.best_params["reg_lambda"],
-        random_state=42, tree_method="hist", n_jobs=-1,
-        eval_metric="logloss", verbosity=0,
+        random_state=42,
+        tree_method="hist",
+        n_jobs=-1,
+        eval_metric="logloss",
+        verbosity=0,
     )
 
     # Isotonic calibration wrapper
@@ -125,15 +128,35 @@ def train_confidence_calibrator(
 
     # Evaluate on held-out 20%
     from sklearn.model_selection import train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
     eval_model = CalibratedClassifierCV(
-        xgb.XGBClassifier(**{k: study.best_params.get(k, v) for k, v in {
-            "n_estimators": 200, "max_depth": 5, "learning_rate": 0.05,
-            "subsample": 0.8, "colsample_bytree": 0.8, "min_child_weight": 3,
-            "gamma": 0.1, "reg_alpha": 0.01, "reg_lambda": 0.1,
-            "random_state": 42, "tree_method": "hist", "n_jobs": -1,
-            "eval_metric": "logloss", "verbosity": 0,
-        }.items()}), method="isotonic", cv=5)
+        xgb.XGBClassifier(
+            **{
+                k: study.best_params.get(k, v)
+                for k, v in {
+                    "n_estimators": 200,
+                    "max_depth": 5,
+                    "learning_rate": 0.05,
+                    "subsample": 0.8,
+                    "colsample_bytree": 0.8,
+                    "min_child_weight": 3,
+                    "gamma": 0.1,
+                    "reg_alpha": 0.01,
+                    "reg_lambda": 0.1,
+                    "random_state": 42,
+                    "tree_method": "hist",
+                    "n_jobs": -1,
+                    "eval_metric": "logloss",
+                    "verbosity": 0,
+                }.items()
+            }
+        ),
+        method="isotonic",
+        cv=5,
+    )
     eval_model.fit(X_train, y_train)
     y_proba = eval_model.predict_proba(X_test)[:, 1]
     auc = roc_auc_score(y_test, y_proba)
@@ -164,6 +187,7 @@ def train_confidence_calibrator(
 
 # ── Model 2: Reward Predictor ─────────────────────────────────────────────────
 
+
 def train_reward_predictor(
     n_trials: int = 30,
     cv_folds: int = 5,
@@ -174,11 +198,10 @@ def train_reward_predictor(
     Uses separate XGBoost regressors per horizon wrapped in MultiOutputRegressor.
     """
     import optuna
-    import mlflow
+    import xgboost as xgb
+    from sklearn.metrics import mean_absolute_error, r2_score
     from sklearn.model_selection import KFold, cross_val_score
     from sklearn.multioutput import MultiOutputRegressor
-    from sklearn.metrics import mean_absolute_error, r2_score
-    import xgboost as xgb
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -197,23 +220,37 @@ def train_reward_predictor(
         scores = cross_val_score(model, X, Y, cv=cv, scoring="r2")
         return scores.mean()
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.TPESampler(seed=42))
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
 
     # Train final model
     final_xgb = xgb.XGBRegressor(
-        **{k: study.best_params.get(k) for k in [
-            "n_estimators", "max_depth", "learning_rate", "subsample",
-            "colsample_bytree", "min_child_weight", "gamma", "reg_alpha", "reg_lambda",
-        ] if k in study.best_params},
-        random_state=42, tree_method="hist", n_jobs=-1, verbosity=0,
+        **{
+            k: study.best_params.get(k)
+            for k in [
+                "n_estimators",
+                "max_depth",
+                "learning_rate",
+                "subsample",
+                "colsample_bytree",
+                "min_child_weight",
+                "gamma",
+                "reg_alpha",
+                "reg_lambda",
+            ]
+            if k in study.best_params
+        },
+        random_state=42,
+        tree_method="hist",
+        n_jobs=-1,
+        verbosity=0,
     )
     final_model = MultiOutputRegressor(final_xgb)
     final_model.fit(X, Y)
 
     # Eval on 20% holdout
     from sklearn.model_selection import train_test_split
+
     X_tr, X_te, Y_tr, Y_te = train_test_split(X, Y, test_size=0.2, random_state=42)
     final_model.fit(X_tr, Y_tr)
     Y_pred = final_model.predict(X_te)
@@ -248,6 +285,7 @@ def train_reward_predictor(
 
 # ── Model 3: Options Pricer (IV Rank Classifier) ──────────────────────────────
 
+
 def train_options_pricer(
     n_trials: int = 25,
     cv_folds: int = 5,
@@ -258,10 +296,9 @@ def train_options_pricer(
     Also exports a regression head for continuous IV rank.
     """
     import optuna
-    import mlflow
-    from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
-    from sklearn.metrics import f1_score, accuracy_score
     import xgboost as xgb
+    from sklearn.metrics import accuracy_score, f1_score
+    from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -276,34 +313,66 @@ def train_options_pricer(
     def objective(trial):
         params = _xgb_trial_params(trial)
         model = xgb.XGBClassifier(
-            **params, objective="multi:softprob", num_class=3,
-            eval_metric="mlogloss", verbosity=0,
+            **params,
+            objective="multi:softprob",
+            num_class=3,
+            eval_metric="mlogloss",
+            verbosity=0,
         )
         cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
         scores = cross_val_score(model, X, y_cls, cv=cv, scoring="f1_weighted")
         return scores.mean()
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.TPESampler(seed=42))
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
 
     # Train final classifier
     clf = xgb.XGBClassifier(
-        **{k: study.best_params.get(k) for k in [
-            "n_estimators", "max_depth", "learning_rate", "subsample",
-            "colsample_bytree", "min_child_weight", "gamma", "reg_alpha", "reg_lambda",
-        ] if k in study.best_params},
-        objective="multi:softprob", num_class=3, eval_metric="mlogloss",
-        random_state=42, tree_method="hist", n_jobs=-1, verbosity=0,
+        **{
+            k: study.best_params.get(k)
+            for k in [
+                "n_estimators",
+                "max_depth",
+                "learning_rate",
+                "subsample",
+                "colsample_bytree",
+                "min_child_weight",
+                "gamma",
+                "reg_alpha",
+                "reg_lambda",
+            ]
+            if k in study.best_params
+        },
+        objective="multi:softprob",
+        num_class=3,
+        eval_metric="mlogloss",
+        random_state=42,
+        tree_method="hist",
+        n_jobs=-1,
+        verbosity=0,
     )
 
     # Train regression head separately
     reg = xgb.XGBRegressor(
-        **{k: study.best_params.get(k) for k in [
-            "n_estimators", "max_depth", "learning_rate", "subsample",
-            "colsample_bytree", "min_child_weight", "gamma", "reg_alpha", "reg_lambda",
-        ] if k in study.best_params},
-        random_state=42, tree_method="hist", n_jobs=-1, verbosity=0,
+        **{
+            k: study.best_params.get(k)
+            for k in [
+                "n_estimators",
+                "max_depth",
+                "learning_rate",
+                "subsample",
+                "colsample_bytree",
+                "min_child_weight",
+                "gamma",
+                "reg_alpha",
+                "reg_lambda",
+            ]
+            if k in study.best_params
+        },
+        random_state=42,
+        tree_method="hist",
+        n_jobs=-1,
+        verbosity=0,
     )
 
     X_tr, X_te, y_tr, y_te, yr_tr, yr_te = train_test_split(
@@ -317,6 +386,7 @@ def train_options_pricer(
     acc = accuracy_score(y_te, y_pred)
 
     from sklearn.metrics import mean_absolute_error
+
     yr_pred = reg.predict(X_te)
     mae_rank = mean_absolute_error(yr_te, yr_pred)
 
@@ -326,7 +396,9 @@ def train_options_pricer(
         "test_f1_weighted": round(f1, 4),
         "test_accuracy": round(acc, 4),
         "test_mae_iv_rank": round(mae_rank, 2),
-        "class_distribution": {str(k): int(v) for k, v in zip(*np.unique(y_cls, return_counts=True))},
+        "class_distribution": {
+            str(k): int(v) for k, v in zip(*np.unique(y_cls, return_counts=True), strict=True)
+        },
         "n_features": len(feature_cols),
         "n_samples": len(df),
         "feature_cols": feature_cols,
@@ -335,12 +407,15 @@ def train_options_pricer(
     model_path = MODEL_DIR / "options_pricer.pkl"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     with open(model_path, "wb") as f:
-        pickle.dump({
-            "classifier": clf,
-            "regressor": reg,
-            "feature_cols": feature_cols,
-            "metrics": metrics,
-        }, f)
+        pickle.dump(
+            {
+                "classifier": clf,
+                "regressor": reg,
+                "feature_cols": feature_cols,
+                "metrics": metrics,
+            },
+            f,
+        )
 
     if track_mlflow:
         _log_to_mlflow("options_pricer", study.best_params, metrics, model_path)
@@ -351,9 +426,11 @@ def train_options_pricer(
 
 # ── MLflow logging ────────────────────────────────────────────────────────────
 
+
 def _log_to_mlflow(model_name: str, params: dict, metrics: dict, model_path: Path):
     try:
         import mlflow
+
         mlflow.set_tracking_uri(MLFLOW_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
 
@@ -374,11 +451,15 @@ def _log_to_mlflow(model_name: str, params: dict, metrics: dict, model_path: Pat
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def train_all(n_trials: int = 30, track_mlflow: bool = True) -> dict[str, dict]:
     """Train all 3 models end-to-end."""
     results = {}
     for train_fn, name in [
-        (lambda: train_confidence_calibrator(n_trials, track_mlflow=track_mlflow), "confidence_calibrator"),
+        (
+            lambda: train_confidence_calibrator(n_trials, track_mlflow=track_mlflow),
+            "confidence_calibrator",
+        ),
         (lambda: train_reward_predictor(n_trials, track_mlflow=track_mlflow), "reward_predictor"),
         (lambda: train_options_pricer(n_trials, track_mlflow=track_mlflow), "options_pricer"),
     ]:
@@ -390,6 +471,7 @@ def train_all(n_trials: int = 30, track_mlflow: bool = True) -> dict[str, dict]:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
     from ml.data_generator import generate_all
+
     logger.info("Generating training data...")
     generate_all()
     logger.info("Training all models (30 Optuna trials each)...")

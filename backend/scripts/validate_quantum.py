@@ -2,6 +2,7 @@
 Qiskit availability validator — run standalone to check quantum dependencies.
 Python: python backend/scripts/validate_quantum.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -13,6 +14,7 @@ def run_validation():
     # 1. Qiskit core
     try:
         import qiskit
+
         results.append(("qiskit", "✅", qiskit.__version__))
     except ImportError:
         results.append(("qiskit", "❌ not installed", "pip install qiskit"))
@@ -20,6 +22,7 @@ def run_validation():
     # 2. Qiskit Aer simulator
     try:
         import qiskit_aer
+
         results.append(("qiskit-aer", "✅", qiskit_aer.__version__))
     except ImportError:
         results.append(("qiskit-aer", "❌ not installed", "pip install qiskit-aer"))
@@ -27,6 +30,7 @@ def run_validation():
     # 3. Qiskit Algorithms (for QAOA)
     try:
         import qiskit_algorithms
+
         results.append(("qiskit-algorithms", "✅", qiskit_algorithms.__version__))
     except ImportError:
         results.append(("qiskit-algorithms", "⚠️ optional", "pip install qiskit-algorithms"))
@@ -34,6 +38,7 @@ def run_validation():
     # 4. NumPy
     try:
         import numpy as np
+
         results.append(("numpy", "✅", np.__version__))
     except ImportError:
         results.append(("numpy", "❌", "required"))
@@ -41,6 +46,7 @@ def run_validation():
     # 5. SciPy
     try:
         import scipy
+
         results.append(("scipy", "✅", scipy.__version__))
     except ImportError:
         results.append(("scipy", "❌", "required for VaR"))
@@ -50,12 +56,14 @@ def run_validation():
     try:
         from qiskit import QuantumCircuit
         from qiskit_aer import AerSimulator
+
         qc = QuantumCircuit(2)
         qc.h([0, 1])
         qc.cx(0, 1)
         qc.measure_all()
         backend = AerSimulator()
         from qiskit import transpile
+
         t = transpile(qc, backend)
         job = backend.run(t, shots=100)
         counts = job.result().get_counts()
@@ -67,8 +75,10 @@ def run_validation():
     qi_status = "❌"
     try:
         sys.path.insert(0, ".")
-        from mcp_servers.quantum_finance import _quantum_inspired_optimize
         import numpy as np
+
+        from mcp_servers.quantum_finance import _quantum_inspired_optimize
+
         mu = np.array([0.10, 0.12, 0.08])
         cov = np.eye(3) * 0.04
         weights, backend = _quantum_inspired_optimize(mu, cov, 1.0, 3, None)
@@ -78,15 +88,15 @@ def run_validation():
         qi_status = f"❌ fallback failed: {exc}"
 
     # Print report
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("  QuantAgents — Quantum Module Validation")
-    print("="*60)
+    print("=" * 60)
     for name, status, detail in results:
         print(f"  {status}  {name:25s}  {detail}")
     print()
     print(f"  QAOA Circuit Test:  {qaoa_status}")
     print(f"  Quantum-Inspired:   {qi_status}")
-    print("="*60)
+    print("=" * 60)
 
     all_critical_ok = all(s == "✅" for _, s, _ in results if "optional" not in s)
     if all_critical_ok:

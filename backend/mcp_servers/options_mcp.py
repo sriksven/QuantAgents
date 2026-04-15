@@ -2,10 +2,10 @@
 QuantAgents — Options MCP Server
 Tools for options chain analysis, strategy pricing, and execution via Alpaca.
 """
+
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from mcp.server import FastMCP
@@ -15,6 +15,7 @@ mcp = FastMCP("options")
 
 
 # ── Tool 1: Analyze IV Environment ────────────────────────────────────────────
+
 
 @mcp.tool()
 def analyze_iv_environment(ticker: str) -> dict[str, Any]:
@@ -30,7 +31,6 @@ def analyze_iv_environment(ticker: str) -> dict[str, Any]:
     """
     try:
         import yfinance as yf
-        import numpy as np
 
         tk = yf.Ticker(ticker.upper())
 
@@ -43,12 +43,12 @@ def analyze_iv_environment(ticker: str) -> dict[str, Any]:
         daily_returns = close.pct_change().dropna()
 
         # Historical volatility: 20-day and 60-day rolling
-        hv_20 = float(daily_returns.tail(20).std() * (252 ** 0.5))
-        hv_60 = float(daily_returns.tail(60).std() * (252 ** 0.5))
-        hv_252 = float(daily_returns.std() * (252 ** 0.5))
+        hv_20 = float(daily_returns.tail(20).std() * (252**0.5))
+        hv_60 = float(daily_returns.tail(60).std() * (252**0.5))
+        hv_252 = float(daily_returns.std() * (252**0.5))
 
         # Rolling 20-day HV over past year for IV rank proxy
-        rolling_hv = daily_returns.rolling(20).std() * (252 ** 0.5)
+        rolling_hv = daily_returns.rolling(20).std() * (252**0.5)
         hv_52w_low = float(rolling_hv.min())
         hv_52w_high = float(rolling_hv.max())
 
@@ -63,13 +63,21 @@ def analyze_iv_environment(ticker: str) -> dict[str, Any]:
                     chain = tk.option_chain(expiries[0])
                     atm_calls = chain.calls
                     current_price = float(close.iloc[-1])
-                    atm_call = atm_calls.iloc[(atm_calls["strike"] - current_price).abs().argsort()[:1]]
-                    iv_estimate = float(atm_call["impliedVolatility"].values[0]) if not atm_call.empty else hv_20
+                    atm_call = atm_calls.iloc[
+                        (atm_calls["strike"] - current_price).abs().argsort()[:1]
+                    ]
+                    iv_estimate = (
+                        float(atm_call["impliedVolatility"].values[0])
+                        if not atm_call.empty
+                        else hv_20
+                    )
             except Exception:
                 iv_estimate = hv_20
 
         # IV Rank = (current IV - 52w low) / (52w high - 52w low)
-        iv_rank = max(0.0, min(100.0, (iv_estimate - hv_52w_low) / max(hv_52w_high - hv_52w_low, 0.001) * 100))
+        iv_rank = max(
+            0.0, min(100.0, (iv_estimate - hv_52w_low) / max(hv_52w_high - hv_52w_low, 0.001) * 100)
+        )
         hv_iv_ratio = round(hv_20 / iv_estimate, 3) if iv_estimate > 0 else None
 
         # IV environment classification
@@ -84,7 +92,13 @@ def analyze_iv_environment(ticker: str) -> dict[str, Any]:
                 chain1 = tk.option_chain(expiries[-1] if len(expiries) > 3 else expiries[1])
                 iv0 = float(chain0.calls["impliedVolatility"].median() or 0)
                 iv1 = float(chain1.calls["impliedVolatility"].median() or 0)
-                term_structure = "backwardated" if iv0 > iv1 * 1.05 else "contango" if iv1 > iv0 * 1.05 else "flat"
+                term_structure = (
+                    "backwardated"
+                    if iv0 > iv1 * 1.05
+                    else "contango"
+                    if iv1 > iv0 * 1.05
+                    else "flat"
+                )
         except Exception:
             pass
 
@@ -115,6 +129,7 @@ def analyze_iv_environment(ticker: str) -> dict[str, Any]:
 
 # ── Tool 2: Select Options Strategy ──────────────────────────────────────────
 
+
 @mcp.tool()
 def select_strategy(
     ticker: str,
@@ -138,11 +153,13 @@ def select_strategy(
         Dict with strategy_name, suggested_legs, pricing estimates, and rationale.
     """
     from services.options_strategy import select_options_strategy
+
     result = select_options_strategy(direction, iv_rank, days_to_expiry, current_price)
     return {"ticker": ticker.upper(), **result}
 
 
 # ── Tool 3: Price Options Strategy ───────────────────────────────────────────
+
 
 @mcp.tool()
 def price_strategy(
@@ -164,8 +181,9 @@ def price_strategy(
         Dict with per-leg prices, net debit/credit, break-even, and Greeks summary.
     """
     import json
-    import yfinance as yf
     from datetime import datetime, timedelta
+
+    import yfinance as yf
 
     try:
         leg_list = json.loads(legs)
@@ -180,7 +198,9 @@ def price_strategy(
             return {"error": f"No options data for {ticker}"}
 
         # Pick closest expiry to target DTE
-        best_expiry = min(expiries, key=lambda e: abs((datetime.strptime(e, "%Y-%m-%d") - target_date).days))
+        best_expiry = min(
+            expiries, key=lambda e: abs((datetime.strptime(e, "%Y-%m-%d") - target_date).days)
+        )
         chain = tk.option_chain(best_expiry)
         info = tk.info
         current_price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
@@ -213,20 +233,22 @@ def price_strategy(
                 total_theta += multiplier * theta
                 total_vega += multiplier * vega
 
-                priced_legs.append({
-                    "action": action,
-                    "option_type": opt_type,
-                    "strike": float(r["strike"]),
-                    "expiry": best_expiry,
-                    "bid": float(r["bid"]),
-                    "ask": float(r["ask"]),
-                    "mid": mid,
-                    "iv": round(iv, 4),
-                    "delta": round(delta, 4),
-                    "theta": round(theta, 4),
-                    "vega": round(vega, 4),
-                    "oi": int(r.get("openInterest", 0) or 0),
-                })
+                priced_legs.append(
+                    {
+                        "action": action,
+                        "option_type": opt_type,
+                        "strike": float(r["strike"]),
+                        "expiry": best_expiry,
+                        "bid": float(r["bid"]),
+                        "ask": float(r["ask"]),
+                        "mid": mid,
+                        "iv": round(iv, 4),
+                        "delta": round(delta, 4),
+                        "theta": round(theta, 4),
+                        "vega": round(vega, 4),
+                        "oi": int(r.get("openInterest", 0) or 0),
+                    }
+                )
             else:
                 priced_legs.append({**leg, "error": f"No matching option at strike {strike}"})
 
@@ -249,7 +271,9 @@ def price_strategy(
             "net_debit_per_share": round(net_debit, 4),
             "net_debit_per_contract": round(net_debit * 100, 2),
             "breakeven": round(breakeven, 2),
-            "breakeven_move_pct": round((breakeven - current_price) / current_price * 100, 2) if current_price else 0,
+            "breakeven_move_pct": round((breakeven - current_price) / current_price * 100, 2)
+            if current_price
+            else 0,
             "portfolio_greeks": {
                 "delta": round(total_delta, 4),
                 "theta_daily": round(total_theta, 4),
@@ -262,6 +286,7 @@ def price_strategy(
 
 
 # ── Tool 4: Backtest Options Strategy ─────────────────────────────────────────
+
 
 @mcp.tool()
 def backtest_options_strategy(
@@ -289,14 +314,21 @@ def backtest_options_strategy(
     Returns:
         Dict with win_rate, avg_return_pct, max_loss, total_trades, annualized_return.
     """
-    import yfinance as yf
+    from datetime import datetime
+
     import numpy as np
-    from datetime import datetime, timedelta
-    from services.options_strategy import select_options_strategy, black_scholes_call, black_scholes_put
+    import yfinance as yf
+
+    from services.options_strategy import (
+        black_scholes_call,
+        black_scholes_put,
+        select_options_strategy,
+    )
 
     try:
-        df = yf.download(ticker.upper(), start=start_date, end=end_date,
-                         auto_adjust=True, progress=False)
+        df = yf.download(
+            ticker.upper(), start=start_date, end=end_date, auto_adjust=True, progress=False
+        )
         if df.empty:
             return {"error": f"No price data for {ticker}"}
 
@@ -304,7 +336,6 @@ def backtest_options_strategy(
 
         # Simulate monthly option entries
         trades = []
-        entry_dates = []
         idx = 0
         n = len(close)
         entry_interval = 21  # monthly
@@ -318,12 +349,12 @@ def backtest_options_strategy(
             exit_price = float(close.iloc[exit_idx])
 
             # Compute historical vol at entry as IV proxy
-            hist_window = daily_returns.iloc[max(0, idx-60):idx]
-            iv = float(hist_window.std() * (252 ** 0.5)) if len(hist_window) > 10 else 0.25
+            hist_window = daily_returns.iloc[max(0, idx - 60) : idx]
+            iv = float(hist_window.std() * (252**0.5)) if len(hist_window) > 10 else 0.25
 
             # Compute rolling HV range for IV rank
-            rolling = daily_returns.rolling(20).std() * (252 ** 0.5)
-            roll_slice = rolling.iloc[max(0, idx-252):idx]
+            rolling = daily_returns.rolling(20).std() * (252**0.5)
+            roll_slice = rolling.iloc[max(0, idx - 252) : idx]
             hv_low = float(roll_slice.min()) if len(roll_slice) > 20 else iv * 0.5
             hv_high = float(roll_slice.max()) if len(roll_slice) > 20 else iv * 1.5
             iv_rank = max(0, min(100, (iv - hv_low) / max(hv_high - hv_low, 0.001) * 100))
@@ -336,9 +367,11 @@ def backtest_options_strategy(
             T_exit = 14 / 365
             r = 0.05
 
-            def price_leg(leg, S, T):
+            def price_leg(leg, S, T, r=r, iv=iv):
                 K = float(leg.get("strike", S))
-                opt_fn = black_scholes_call if leg.get("option_type") == "call" else black_scholes_put
+                opt_fn = (
+                    black_scholes_call if leg.get("option_type") == "call" else black_scholes_put
+                )
                 return opt_fn(S, K, T, r, iv).get("price", 0.0)
 
             legs = strategy.get("suggested_legs", [])
@@ -359,15 +392,17 @@ def backtest_options_strategy(
             pnl_per_share = exit_val - entry_val
             pnl_pct = pnl_per_share / abs(entry_val) * 100 if entry_val != 0 else 0
 
-            trades.append({
-                "entry_date": str(entry_date)[:10],
-                "entry_price": round(entry_price, 2),
-                "exit_price": round(exit_price, 2),
-                "iv_rank": round(iv_rank, 1),
-                "strategy": strategy["strategy_name"],
-                "pnl_per_share": round(pnl_per_share, 4),
-                "pnl_pct": round(pnl_pct, 2),
-            })
+            trades.append(
+                {
+                    "entry_date": str(entry_date)[:10],
+                    "entry_price": round(entry_price, 2),
+                    "exit_price": round(exit_price, 2),
+                    "iv_rank": round(iv_rank, 1),
+                    "strategy": strategy["strategy_name"],
+                    "pnl_per_share": round(pnl_per_share, 4),
+                    "pnl_pct": round(pnl_pct, 2),
+                }
+            )
 
             idx += entry_interval
 
@@ -377,7 +412,9 @@ def backtest_options_strategy(
         pnls = [t["pnl_pct"] for t in trades]
         wins = [p for p in pnls if p > 0]
         losses = [p for p in pnls if p <= 0]
-        years = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days / 365
+        years = (
+            datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")
+        ).days / 365
 
         return {
             "ticker": ticker.upper(),

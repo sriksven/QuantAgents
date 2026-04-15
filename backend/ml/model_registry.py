@@ -3,12 +3,12 @@ QuantAgents — Model Registry + Inference Service
 Handles versioned model loading, inference caching, rollback,
 and the monthly retrain Airflow DAG trigger.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import pickle
-import time
 from pathlib import Path
 from typing import Any
 
@@ -21,17 +21,18 @@ MODEL_DIR = Path(os.getenv("MODEL_DIR", "models"))
 
 # ── Model Registry ────────────────────────────────────────────────────────────
 
+
 class ModelRegistry:
     """
     Simple file-based model registry with versioning + rollback.
-    
+
     Directory structure:
         models/
           confidence_calibrator.pkl         # current production model
           confidence_calibrator_v{N}.pkl    # versioned snapshots (keep last 3)
           reward_predictor.pkl
           options_pricer.pkl
-    
+
     In production, swap this for MLflow Model Registry.
     """
 
@@ -73,12 +74,13 @@ class ModelRegistry:
 
             # Prune old versions (keep last MAX_VERSIONS)
             existing = sorted(self.model_dir.glob(f"{model_name}_v*.pkl"))
-            for old in existing[:-self.MAX_VERSIONS]:
+            for old in existing[: -self.MAX_VERSIONS]:
                 old.unlink()
                 logger.info("Pruned old version: %s", old.name)
 
         # Copy new model to production slot
         import shutil
+
         shutil.copy2(new_model_path, current)
         self._cache.pop(model_name, None)  # invalidate cache
         logger.info("Promoted %s → %s", new_model_path, current)
@@ -133,7 +135,8 @@ def predict_confidence(
     Returns:
         calibrated_confidence, reliability_score, is_overconfident (bool)
     """
-    from ml.train_models import REGIME_MAP, ACTION_MAP
+    from ml.train_models import ACTION_MAP, REGIME_MAP
+
     try:
         bundle = _registry.load("confidence_calibrator")
         model = bundle["model"]
@@ -195,7 +198,8 @@ def predict_reward(
     Returns:
         reward_30d, reward_60d, reward_90d (predicted), best_horizon, expected_best_reward
     """
-    from ml.train_models import REGIME_MAP, ACTION_MAP
+    from ml.train_models import ACTION_MAP, REGIME_MAP
+
     try:
         bundle = _registry.load("reward_predictor")
         model = bundle["model"]
@@ -259,6 +263,7 @@ def predict_iv_rank(
         iv_rank_bucket (0/1/2), iv_rank_continuous, iv_environment, confidence_scores
     """
     from ml.train_models import REGIME_MAP
+
     try:
         bundle = _registry.load("options_pricer")
         classifier = bundle["classifier"]
@@ -303,6 +308,7 @@ def predict_iv_rank(
 
 
 # ── Registry singleton accessor ───────────────────────────────────────────────
+
 
 def get_registry() -> ModelRegistry:
     return _registry

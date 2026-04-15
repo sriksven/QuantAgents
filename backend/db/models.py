@@ -2,8 +2,9 @@
 SQLAlchemy ORM Models for QuantAgents
 All 9 tables defined here with async support.
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
@@ -20,7 +21,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -34,7 +35,9 @@ class Analysis(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False, default="default")
-    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending|running|complete|error
+    status: Mapped[str] = mapped_column(
+        String(50), default="pending"
+    )  # pending|running|complete|error
     recommendation: Mapped[str | None] = mapped_column(String(10))  # BUY|HOLD|SELL
     confidence: Mapped[float | None] = mapped_column(Float)
     debate_rounds: Mapped[int] = mapped_column(Integer, default=0)
@@ -101,7 +104,9 @@ class Trade(Base):
     exit_price: Mapped[float | None] = mapped_column(Float)
     pnl: Mapped[float | None] = mapped_column(Float)
     pnl_pct: Mapped[float | None] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending|filled|cancelled|closed
+    status: Mapped[str] = mapped_column(
+        String(30), default="pending"
+    )  # pending|filled|cancelled|closed
     alpaca_order_id: Mapped[str | None] = mapped_column(String(100))
     is_paper: Mapped[bool] = mapped_column(Boolean, default=True)
     options_data: Mapped[dict | None] = mapped_column(JSON)  # legs, expiry, strikes, strategy
@@ -119,7 +124,9 @@ class TradeReasoning(Base):
     __tablename__ = "trade_reasoning"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    trade_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trades.id"), nullable=False, unique=True)
+    trade_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trades.id"), nullable=False, unique=True
+    )
     agent_chain: Mapped[dict] = mapped_column(JSON, nullable=False)  # Full agent report chain
     confidence: Mapped[float | None] = mapped_column(Float)
     backtest_metrics: Mapped[dict | None] = mapped_column(JSON)  # Sharpe, win_rate, drawdown, ...
@@ -156,8 +163,12 @@ class Alert(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(String(100), default="default")
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    alert_type: Mapped[str] = mapped_column(String(50), nullable=False)  # price|indicator|volume|news|pnl
-    condition: Mapped[dict] = mapped_column(JSON, nullable=False)  # e.g. {"op": ">", "value": 200.0}
+    alert_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # price|indicator|volume|news|pnl
+    condition: Mapped[dict] = mapped_column(
+        JSON, nullable=False
+    )  # e.g. {"op": ">", "value": 200.0}
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -202,7 +213,9 @@ class MockPortfolio(Base):
     __tablename__ = "mock_portfolios"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, default="default")
+    user_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, unique=True, default="default"
+    )
     cash_balance: Mapped[float] = mapped_column(Float, default=100000.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

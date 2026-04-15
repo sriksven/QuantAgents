@@ -2,9 +2,9 @@
 QuantAgents — Phase 5 Agent Nodes
 Backtest Engine and Trade Executor agents.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -12,9 +12,9 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from orchestrator.state import BacktestResult, FinSightState
 from orchestrator.nodes import _get_langfuse_callback, _get_llm
 from orchestrator.nodes_phase4 import _load_tools_from_servers
+from orchestrator.state import BacktestResult, FinSightState
 from services.position_sizing import compute_position_size
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ Be transparent. If you vetoed the trade, explain which checklist item failed.
 
 # ── Backtest Engine ───────────────────────────────────────────────────────────
 
+
 async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
     """
     Run backtests to validate the Portfolio Strategist's recommendation.
@@ -106,11 +107,13 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
 
     if not rec:
         logger.warning("Backtest Engine: no recommendation in state, skipping")
-        return {"backtest_result": BacktestResult(
-            strategy_description="No recommendation to validate",
-            validated=False,
-            rejection_reason="Missing recommendation from Portfolio Strategist",
-        )}
+        return {
+            "backtest_result": BacktestResult(
+                strategy_description="No recommendation to validate",
+                validated=False,
+                rejection_reason="Missing recommendation from Portfolio Strategist",
+            )
+        }
 
     system_prompt = BACKTEST_ENGINE_SYSTEM.format(
         action=rec.action,
@@ -125,12 +128,14 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=(
-            f"Validate the {rec.action} recommendation for {ticker}. "
-            f"Run the backtest and Monte Carlo simulation. "
-            f"Time horizon: {rec.time_horizon}. "
-            f"Provide your VALIDATED/INVALIDATED verdict with supporting metrics."
-        )),
+        HumanMessage(
+            content=(
+                f"Validate the {rec.action} recommendation for {ticker}. "
+                f"Run the backtest and Monte Carlo simulation. "
+                f"Time horizon: {rec.time_horizon}. "
+                f"Provide your VALIDATED/INVALIDATED verdict with supporting metrics."
+            )
+        ),
     ]
 
     try:
@@ -144,7 +149,11 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
         rejection_reason = None
         if not validated:
             match = re.search(r"INVALIDATED[:\s]+(.+?)(?:\n|$)", content, re.IGNORECASE)
-            rejection_reason = match.group(1).strip()[:300] if match else "Strategy did not meet minimum thresholds"
+            rejection_reason = (
+                match.group(1).strip()[:300]
+                if match
+                else "Strategy did not meet minimum thresholds"
+            )
 
         # Try to extract numeric metrics from the response
         def extract_float(pattern: str, text: str) -> float | None:
@@ -165,6 +174,7 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
         if not validated and rec:
             # Override recommendation to HOLD if backtest fails
             from orchestrator.state import TradeRecommendation
+
             updated_rec = TradeRecommendation(
                 action="HOLD",
                 confidence=rec.confidence,
@@ -173,7 +183,11 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
             logger.warning("Backtest Engine INVALIDATED trade — overriding to HOLD")
             return {"backtest_result": backtest_result, "recommendation": updated_rec}
 
-        logger.info("Backtest Engine: %s in %.1fs", "VALIDATED" if validated else "INVALIDATED", time.time() - t_start)
+        logger.info(
+            "Backtest Engine: %s in %.1fs",
+            "VALIDATED" if validated else "INVALIDATED",
+            time.time() - t_start,
+        )
         return {"backtest_result": backtest_result}
 
     except Exception as exc:
@@ -189,6 +203,7 @@ async def run_backtest_engine(state: FinSightState) -> dict[str, Any]:
 
 
 # ── Trade Executor ────────────────────────────────────────────────────────────
+
 
 async def run_trade_executor(state: FinSightState) -> dict[str, Any]:
     """
@@ -213,18 +228,25 @@ async def run_trade_executor(state: FinSightState) -> dict[str, Any]:
     # Gate 2: Must be a BUY or SELL (not HOLD)
     if not rec or rec.action == "HOLD":
         logger.info("Trade Executor: no order — recommendation is HOLD")
-        return {"order_placed": False, "order_id": None, "order_details": {"veto_reason": "HOLD recommendation"}}
+        return {
+            "order_placed": False,
+            "order_id": None,
+            "order_details": {"veto_reason": "HOLD recommendation"},
+        }
 
     callback = _get_langfuse_callback("trade_executor", analysis_id)
     llm = _get_llm()
-    tools = await _load_tools_from_servers([
-        "mcp_servers.alpaca_trading",
-        "mcp_servers.trade_journal",
-    ])
+    tools = await _load_tools_from_servers(
+        [
+            "mcp_servers.alpaca_trading",
+            "mcp_servers.trade_journal",
+        ]
+    )
 
     # Fetch position sizing data inline (to not rely on LLM for math)
     try:
         from mcp_servers.alpaca_trading import get_account, get_latest_quote, get_positions
+
         account_data = get_account()
         quote_data = get_latest_quote(ticker)
         position_data = get_positions()
@@ -235,7 +257,7 @@ async def run_trade_executor(state: FinSightState) -> dict[str, Any]:
         trading_blocked = account_data.get("trading_blocked", False)
 
         existing_pos_value = 0.0
-        for pos in (position_data.get("positions") or []):
+        for pos in position_data.get("positions") or []:
             if pos.get("symbol") == ticker.upper():
                 existing_pos_value = float(pos.get("market_value") or 0)
 
@@ -265,27 +287,41 @@ async def run_trade_executor(state: FinSightState) -> dict[str, Any]:
 
     # Gate 3: Safety checks
     if trading_blocked:
-        return {"order_placed": False, "order_id": None, "order_details": {"veto_reason": "Account is trading_blocked"}}
+        return {
+            "order_placed": False,
+            "order_id": None,
+            "order_details": {"veto_reason": "Account is trading_blocked"},
+        }
     if sizing["recommended_shares"] <= 0:
-        return {"order_placed": False, "order_id": None, "order_details": {"veto_reason": "Position sizing returned 0 shares", "sizing": sizing}}
+        return {
+            "order_placed": False,
+            "order_id": None,
+            "order_details": {"veto_reason": "Position sizing returned 0 shares", "sizing": sizing},
+        }
     if sizing["notional"] > buying_power:
-        return {"order_placed": False, "order_id": None, "order_details": {
-            "veto_reason": f"Insufficient buying power: need ${sizing['notional']:,.0f}, have ${buying_power:,.0f}"
-        }}
+        return {
+            "order_placed": False,
+            "order_id": None,
+            "order_details": {
+                "veto_reason": f"Insufficient buying power: need ${sizing['notional']:,.0f}, have ${buying_power:,.0f}"
+            },
+        }
 
     # Use LLM to execute the order via MCP tools
     system_prompt = TRADE_EXECUTOR_SYSTEM
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=(
-            f"Execute this validated {rec.action} for {ticker}:\n"
-            f"- Shares: {sizing['recommended_shares']} (${sizing['notional']:,.2f} notional)\n"
-            f"- Current price: ${current_price:.2f}\n"
-            f"- Stop loss: ${sizing['stop_loss_price']:.2f}\n"
-            f"- Position sizing: {sizing['reasoning']}\n\n"
-            f"Pre-execution checklist already passed (trading_blocked=False, buying_power sufficient).\n"
-            f"Place the market order, then log the trade to the journal with analysis_id={analysis_id}."
-        )),
+        HumanMessage(
+            content=(
+                f"Execute this validated {rec.action} for {ticker}:\n"
+                f"- Shares: {sizing['recommended_shares']} (${sizing['notional']:,.2f} notional)\n"
+                f"- Current price: ${current_price:.2f}\n"
+                f"- Stop loss: ${sizing['stop_loss_price']:.2f}\n"
+                f"- Position sizing: {sizing['reasoning']}\n\n"
+                f"Pre-execution checklist already passed (trading_blocked=False, buying_power sufficient).\n"
+                f"Place the market order, then log the trade to the journal with analysis_id={analysis_id}."
+            )
+        ),
     ]
 
     try:
@@ -300,11 +336,18 @@ async def run_trade_executor(state: FinSightState) -> dict[str, Any]:
         if order_id_match:
             order_id = order_id_match.group(1)
 
-        order_placed = bool(order_id or ("submitted" in content.lower() or "placed" in content.lower()))
+        order_placed = bool(
+            order_id or ("submitted" in content.lower() or "placed" in content.lower())
+        )
 
         logger.info(
             "Trade Executor: order_placed=%s, order_id=%s, ticker=%s, action=%s, shares=%d (%.1fs)",
-            order_placed, order_id, ticker, rec.action, sizing["recommended_shares"], time.time() - t_start,
+            order_placed,
+            order_id,
+            ticker,
+            rec.action,
+            sizing["recommended_shares"],
+            time.time() - t_start,
         )
 
         return {

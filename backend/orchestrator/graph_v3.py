@@ -32,6 +32,7 @@ Full Phase 5 topology:
                │
              END
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,25 +41,26 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator.state import FinSightState
 from orchestrator.nodes import (
     load_memory,
-    run_market_researcher,
     run_fundamental_analyst,
+    run_market_researcher,
     save_to_memory,
 )
 from orchestrator.nodes_phase4 import (
-    run_technical_analyst,
-    run_risk_assessor,
     run_debate_responses,
     run_portfolio_strategist,
+    run_risk_assessor,
+    run_technical_analyst,
 )
 from orchestrator.nodes_phase5 import run_backtest_engine, run_trade_executor
+from orchestrator.state import FinSightState
 
 logger = logging.getLogger(__name__)
 
 
 # ── Load RL context node ──────────────────────────────────────────────────────
+
 
 async def load_rl_context(state: FinSightState) -> dict[str, Any]:
     """
@@ -68,6 +70,7 @@ async def load_rl_context(state: FinSightState) -> dict[str, Any]:
     ticker = state["ticker"]
     try:
         from mcp_servers.trade_journal import get_rl_reward_history
+
         result = await get_rl_reward_history(ticker, limit=10)
         context = result.get("context", "")
         return {"rl_context": context or None}
@@ -79,6 +82,7 @@ async def load_rl_context(state: FinSightState) -> dict[str, Any]:
 # ── Conditional edge functions ────────────────────────────────────────────────
 # (imported from graph_v2 for debate routing)
 
+
 def should_debate(state: FinSightState) -> str:
     challenges = state.get("challenges") or []
     return "debate_responses" if any(not c.resolved for c in challenges) else "portfolio_strategist"
@@ -87,7 +91,11 @@ def should_debate(state: FinSightState) -> str:
 def debate_or_strategy(state: FinSightState) -> str:
     if state.get("debate_rounds", 0) >= state.get("max_debate_rounds", 2):
         return "portfolio_strategist"
-    return "risk_assessor" if any(not c.resolved for c in (state.get("challenges") or [])) else "portfolio_strategist"
+    return (
+        "risk_assessor"
+        if any(not c.resolved for c in (state.get("challenges") or []))
+        else "portfolio_strategist"
+    )
 
 
 def execute_or_save(state: FinSightState) -> str:
@@ -105,6 +113,7 @@ def execute_or_save(state: FinSightState) -> str:
 
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
+
 
 def build_graph_v3():
     """Build and compile the Phase 5 graph."""
@@ -139,23 +148,35 @@ def build_graph_v3():
     graph.add_edge("technical_analyst", "risk_assessor")
 
     # ── Conditional debate ────────────────────────────────────────────────────
-    graph.add_conditional_edges("risk_assessor", should_debate, {
-        "debate_responses": "debate_responses",
-        "portfolio_strategist": "portfolio_strategist",
-    })
-    graph.add_conditional_edges("debate_responses", debate_or_strategy, {
-        "risk_assessor": "risk_assessor",
-        "portfolio_strategist": "portfolio_strategist",
-    })
+    graph.add_conditional_edges(
+        "risk_assessor",
+        should_debate,
+        {
+            "debate_responses": "debate_responses",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
+    graph.add_conditional_edges(
+        "debate_responses",
+        debate_or_strategy,
+        {
+            "risk_assessor": "risk_assessor",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
 
     # ── Backtest validation ───────────────────────────────────────────────────
     graph.add_edge("portfolio_strategist", "backtest_engine")
 
     # ── Conditional execution ─────────────────────────────────────────────────
-    graph.add_conditional_edges("backtest_engine", execute_or_save, {
-        "trade_executor": "trade_executor",
-        "save_memory": "save_memory",
-    })
+    graph.add_conditional_edges(
+        "backtest_engine",
+        execute_or_save,
+        {
+            "trade_executor": "trade_executor",
+            "save_memory": "save_memory",
+        },
+    )
 
     graph.add_edge("trade_executor", "save_memory")
     graph.add_edge("save_memory", END)

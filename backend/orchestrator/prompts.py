@@ -3,8 +3,8 @@ QuantAgents — Agent Prompts
 Declarative prompts for all 8 agents.
 Context injection placeholders use {field} format.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Agent 1 — Market Researcher
@@ -254,6 +254,7 @@ You synthesize all research reports, the debate outcomes, and the current portfo
 # ══════════════════════════════════════════════════════════════════════════════
 # Shared utilities
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def inject_context(prompt: str, **kwargs) -> str:
     """Safely inject context into a prompt template."""

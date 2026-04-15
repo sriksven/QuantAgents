@@ -3,6 +3,7 @@ QuantAgents — SEC EDGAR MCP Server
 Exposes 2 tools: search_filings and get_company_facts.
 Uses the free SEC EDGAR API (no key required).
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,7 @@ mcp = FastMCP("sec-edgar")
 HEADERS = {"User-Agent": "QuantAgents research@quantagents.ai"}
 BASE_SEARCH = "https://efts.sec.gov/LATEST/search-index"
 BASE_FACTS = "https://data.sec.gov/api/xbrl/companyfacts"
-RATE_LIMIT = 0.12   # 10 req/s max
+RATE_LIMIT = 0.12  # 10 req/s max
 
 
 def _get_cik(ticker: str) -> str | None:
@@ -37,6 +38,7 @@ def _get_cik(ticker: str) -> str | None:
 
 
 # ── Tool 1: Search Filings ────────────────────────────────────────────────────
+
 
 @mcp.tool()
 def search_filings(
@@ -83,14 +85,16 @@ def search_filings(
         filings = []
         for hit in hits[:20]:
             src = hit.get("_source", {})
-            filings.append({
-                "form_type": src.get("form_type"),
-                "filing_date": src.get("file_date"),
-                "period_of_report": src.get("period_of_report"),
-                "accession_no": src.get("accession_no"),
-                "display_name": (src.get("display_names") or [""])[0],
-                "edgar_url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type={src.get('form_type', '')}&dateb=&owner=include&count=10",
-            })
+            filings.append(
+                {
+                    "form_type": src.get("form_type"),
+                    "filing_date": src.get("file_date"),
+                    "period_of_report": src.get("period_of_report"),
+                    "accession_no": src.get("accession_no"),
+                    "display_name": (src.get("display_names") or [""])[0],
+                    "edgar_url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type={src.get('form_type', '')}&dateb=&owner=include&count=10",
+                }
+            )
 
         return {
             "ticker": ticker.upper(),
@@ -105,6 +109,7 @@ def search_filings(
 
 
 # ── Tool 2: Get Company Facts (XBRL) ─────────────────────────────────────────
+
 
 @mcp.tool()
 def get_company_facts(ticker: str) -> dict[str, Any]:
@@ -133,7 +138,11 @@ def get_company_facts(ticker: str) -> dict[str, Any]:
         us_gaap = facts.get("facts", {}).get("us-gaap", {})
 
         KEY_CONCEPTS = {
-            "revenue": ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"],
+            "revenue": [
+                "Revenues",
+                "RevenueFromContractWithCustomerExcludingAssessedTax",
+                "SalesRevenueNet",
+            ],
             "net_income": ["NetIncomeLoss"],
             "operating_income": ["OperatingIncomeLoss"],
             "eps_basic": ["EarningsPerShareBasic"],
@@ -171,8 +180,12 @@ def get_company_facts(ticker: str) -> dict[str, Any]:
                         extracted[label] = {
                             "concept": concept,
                             "unit": unit_key,
-                            "annual": [{"period": e.get("end"), "value": e.get("val")} for e in annual],
-                            "quarterly": [{"period": e.get("end"), "value": e.get("val")} for e in quarterly],
+                            "annual": [
+                                {"period": e.get("end"), "value": e.get("val")} for e in annual
+                            ],
+                            "quarterly": [
+                                {"period": e.get("end"), "value": e.get("val")} for e in quarterly
+                            ],
                         }
                         break
                 if label in extracted:

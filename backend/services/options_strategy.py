@@ -3,13 +3,14 @@ QuantAgents — Options Strategy Selection Service
 IV-aware strategy selection based on direction, IV rank, and time horizon.
 Pure Python — no external dependencies beyond the standard library.
 """
+
 from __future__ import annotations
 
 import math
 from typing import Any
 
-
 # ── Greeks approximation (Black-Scholes) ─────────────────────────────────────
+
 
 def black_scholes_call(S: float, K: float, T: float, r: float, sigma: float) -> dict[str, float]:
     """
@@ -28,7 +29,7 @@ def black_scholes_call(S: float, K: float, T: float, r: float, sigma: float) -> 
     if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return {"price": 0.0, "delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
 
-    d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+    d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
 
     def N(x: float) -> float:
@@ -37,7 +38,7 @@ def black_scholes_call(S: float, K: float, T: float, r: float, sigma: float) -> 
 
     def n(x: float) -> float:
         """Standard normal PDF."""
-        return math.exp(-0.5 * x ** 2) / math.sqrt(2 * math.pi)
+        return math.exp(-0.5 * x**2) / math.sqrt(2 * math.pi)
 
     price = S * N(d1) - K * math.exp(-r * T) * N(d2)
     delta = N(d1)
@@ -69,6 +70,7 @@ def black_scholes_put(S: float, K: float, T: float, r: float, sigma: float) -> d
 
 
 # ── Strategy Selector ─────────────────────────────────────────────────────────
+
 
 def select_options_strategy(
     direction: str,
@@ -142,8 +144,18 @@ def select_options_strategy(
                 "ideal_dte": min(45, days_to_expiry),
                 "risk_profile": "Limited risk/reward, positive theta",
                 "suggested_legs": [
-                    {"action": "sell", "option_type": "put", "strike": round(S * 0.97, 0), "contracts": 1},
-                    {"action": "buy",  "option_type": "put", "strike": round(S * 0.97, 0) - width, "contracts": 1},
+                    {
+                        "action": "sell",
+                        "option_type": "put",
+                        "strike": round(S * 0.97, 0),
+                        "contracts": 1,
+                    },
+                    {
+                        "action": "buy",
+                        "option_type": "put",
+                        "strike": round(S * 0.97, 0) - width,
+                        "contracts": 1,
+                    },
                 ],
                 "max_loss": f"Spread width minus credit received (~${width:.0f} per share)",
                 "max_gain": "Credit received",
@@ -159,8 +171,13 @@ def select_options_strategy(
                 "ideal_dte": max(21, days_to_expiry),
                 "risk_profile": "Limited risk, limited reward (defined)",
                 "suggested_legs": [
-                    {"action": "buy",  "option_type": "call", "strike": atm, "contracts": 1},
-                    {"action": "sell", "option_type": "call", "strike": round(S * 1.05, 0), "contracts": 1},
+                    {"action": "buy", "option_type": "call", "strike": atm, "contracts": 1},
+                    {
+                        "action": "sell",
+                        "option_type": "call",
+                        "strike": round(S * 1.05, 0),
+                        "contracts": 1,
+                    },
                 ],
                 "max_loss": "Net debit paid",
                 "max_gain": "Spread width minus net debit",
@@ -195,8 +212,18 @@ def select_options_strategy(
                 "ideal_dte": min(45, days_to_expiry),
                 "risk_profile": "Limited risk/reward, positive theta",
                 "suggested_legs": [
-                    {"action": "sell", "option_type": "call", "strike": round(S * 1.03, 0), "contracts": 1},
-                    {"action": "buy",  "option_type": "call", "strike": round(S * 1.03, 0) + width, "contracts": 1},
+                    {
+                        "action": "sell",
+                        "option_type": "call",
+                        "strike": round(S * 1.03, 0),
+                        "contracts": 1,
+                    },
+                    {
+                        "action": "buy",
+                        "option_type": "call",
+                        "strike": round(S * 1.03, 0) + width,
+                        "contracts": 1,
+                    },
                 ],
                 "max_loss": "Spread width minus credit",
                 "max_gain": "Credit received",
@@ -212,8 +239,13 @@ def select_options_strategy(
                 "ideal_dte": max(21, days_to_expiry),
                 "risk_profile": "Limited risk, limited reward (defined)",
                 "suggested_legs": [
-                    {"action": "buy",  "option_type": "put", "strike": atm, "contracts": 1},
-                    {"action": "sell", "option_type": "put", "strike": round(S * 0.95, 0), "contracts": 1},
+                    {"action": "buy", "option_type": "put", "strike": atm, "contracts": 1},
+                    {
+                        "action": "sell",
+                        "option_type": "put",
+                        "strike": round(S * 0.95, 0),
+                        "contracts": 1,
+                    },
                 ],
                 "max_loss": "Net debit paid",
                 "max_gain": "Spread width minus net debit",
@@ -232,10 +264,30 @@ def select_options_strategy(
                 "ideal_dte": min(45, days_to_expiry),
                 "risk_profile": "Limited risk/reward, profits from time decay and IV crush",
                 "suggested_legs": [
-                    {"action": "sell", "option_type": "put",  "strike": round(S * 0.95, 0), "contracts": 1},
-                    {"action": "buy",  "option_type": "put",  "strike": round(S * 0.95, 0) - width, "contracts": 1},
-                    {"action": "sell", "option_type": "call", "strike": round(S * 1.05, 0), "contracts": 1},
-                    {"action": "buy",  "option_type": "call", "strike": round(S * 1.05, 0) + width, "contracts": 1},
+                    {
+                        "action": "sell",
+                        "option_type": "put",
+                        "strike": round(S * 0.95, 0),
+                        "contracts": 1,
+                    },
+                    {
+                        "action": "buy",
+                        "option_type": "put",
+                        "strike": round(S * 0.95, 0) - width,
+                        "contracts": 1,
+                    },
+                    {
+                        "action": "sell",
+                        "option_type": "call",
+                        "strike": round(S * 1.05, 0),
+                        "contracts": 1,
+                    },
+                    {
+                        "action": "buy",
+                        "option_type": "call",
+                        "strike": round(S * 1.05, 0) + width,
+                        "contracts": 1,
+                    },
                 ],
                 "max_loss": "Spread width minus total credit (on either side)",
                 "max_gain": "Total credit received",
@@ -251,8 +303,12 @@ def select_options_strategy(
                 "ideal_dte": min(30, days_to_expiry),
                 "risk_profile": "Reduces cost basis; caps upside; downside not hedged",
                 "suggested_legs": [
-                    {"action": "sell", "option_type": "call",
-                     "strike": round(S * 1.05, 0), "contracts": 1}
+                    {
+                        "action": "sell",
+                        "option_type": "call",
+                        "strike": round(S * 1.05, 0),
+                        "contracts": 1,
+                    }
                 ],
                 "max_loss": "Full stock loss minus premium received",
                 "max_gain": "Premium + stock gain up to strike",
@@ -282,19 +338,27 @@ def select_options_strategy(
         for leg in strategies["suggested_legs"]:
             K = float(leg.get("strike", S))
             opt_type = leg.get("option_type", "call")
-            bs = black_scholes_call(S, K, T, r, sigma) if opt_type == "call" else black_scholes_put(S, K, T, r, sigma)
+            bs = (
+                black_scholes_call(S, K, T, r, sigma)
+                if opt_type == "call"
+                else black_scholes_put(S, K, T, r, sigma)
+            )
             multiplier = -1 if leg["action"] == "sell" else 1
             net_debit += multiplier * bs["price"]
-            priced_legs.append({
-                **leg,
-                "estimated_price": bs["price"],
-                "delta": bs["delta"],
-                "theta": bs["theta"],
-                "vega": bs["vega"],
-            })
+            priced_legs.append(
+                {
+                    **leg,
+                    "estimated_price": bs["price"],
+                    "delta": bs["delta"],
+                    "theta": bs["theta"],
+                    "vega": bs["vega"],
+                }
+            )
         strategies["priced_legs"] = priced_legs
         strategies["estimated_net_debit_per_share"] = round(net_debit, 4)
-        strategies["estimated_net_debit_total"] = round(net_debit * 100, 2)  # 1 contract = 100 shares
+        strategies["estimated_net_debit_total"] = round(
+            net_debit * 100, 2
+        )  # 1 contract = 100 shares
 
     return {
         "direction": direction,
@@ -344,9 +408,11 @@ def compute_options_position_size(
         "contracts": contracts,
         "total_premium": round(actual_premium, 2),
         "cost_per_contract": round(cost_per_contract, 2),
-        "pct_of_portfolio": round(actual_premium / portfolio_value * 100, 2) if portfolio_value > 0 else 0,
+        "pct_of_portfolio": round(actual_premium / portfolio_value * 100, 2)
+        if portfolio_value > 0
+        else 0,
         "reasoning": (
             f"{contracts} contract(s) × ${cost_per_contract:.2f}/contract = "
-            f"${actual_premium:.2f} ({actual_premium/portfolio_value*100:.1f}% of portfolio)"
+            f"${actual_premium:.2f} ({actual_premium / portfolio_value * 100:.1f}% of portfolio)"
         ),
     }

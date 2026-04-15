@@ -4,6 +4,7 @@ Builds and returns the compiled CompiledStateGraph.
 Phase 3: load_memory → market_researcher ‖ fundamental_analyst → save_memory
 Phase 4+: additional agents and debate loop will be added here.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,13 +12,13 @@ from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator.state import FinSightState
 from orchestrator.nodes import (
     load_memory,
     run_fundamental_analyst,
     run_market_researcher,
     save_to_memory,
 )
+from orchestrator.state import FinSightState
 
 logger = logging.getLogger(__name__)
 

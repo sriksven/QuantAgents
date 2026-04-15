@@ -1,6 +1,7 @@
 """
 QuantAgents — FastAPI Application Entry Point
 """
+
 from contextlib import asynccontextmanager
 
 import structlog
@@ -17,11 +18,15 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     settings = get_settings()
-    logger.info("QuantAgents backend starting", environment="paper" if settings.is_paper_trading else "live")
+    logger.info(
+        "QuantAgents backend starting", environment="paper" if settings.is_paper_trading else "live"
+    )
     try:
         await init_db()
     except Exception as e:
-        logger.warning(f"Failed to connect to database on startup. Make sure Docker is running. Error: {e}")
+        logger.warning(
+            f"Failed to connect to database on startup. Make sure Docker is running. Error: {e}"
+        )
     yield
     logger.info("QuantAgents backend shutting down")
 
@@ -45,11 +50,11 @@ def create_app() -> FastAPI:
     )
 
     # ── Routes (will grow per phase) ──────────────────────────
-    from api.health import router as health_router
     from api.analyze import router as analyze_router
-    from api.ws_analyze import router as ws_router
-    from api.trade import router as trade_router
+    from api.health import router as health_router
     from api.mock_trade import router as mock_trade_router
+    from api.trade import router as trade_router
+    from api.ws_analyze import router as ws_router
 
     app.include_router(health_router, tags=["health"])
     app.include_router(analyze_router)
@@ -65,4 +70,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=get_settings().backend_port, reload=True)

@@ -3,6 +3,7 @@ QuantAgents — Phase 6 Agent Nodes
 Options Analyst agent: analyzes the options market and recommends a
 complimentary options strategy alongside (or instead of) stock trades.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,9 +14,9 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from orchestrator.state import FinSightState, OptionsRecommendation
 from orchestrator.nodes import _get_langfuse_callback, _get_llm
 from orchestrator.nodes_phase4 import _load_tools_from_servers
+from orchestrator.state import FinSightState, OptionsRecommendation
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +94,9 @@ async def run_options_analyst(state: FinSightState) -> dict[str, Any]:
     t_start = time.time()
 
     rec_summary = (
-        f"Action={rec.action}, Confidence={rec.confidence:.0%}, "
-        f"Time Horizon={rec.time_horizon}"
-        if rec else "No stock recommendation available."
+        f"Action={rec.action}, Confidence={rec.confidence:.0%}, Time Horizon={rec.time_horizon}"
+        if rec
+        else "No stock recommendation available."
     )
 
     system_prompt = OPTIONS_ANALYST_SYSTEM.format(
@@ -109,12 +110,14 @@ async def run_options_analyst(state: FinSightState) -> dict[str, Any]:
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=(
-            f"Analyze the options market for {ticker} and recommend the best options strategy. "
-            f"The Portfolio Strategist recommends: {rec_summary}. "
-            f"Use your tools to: 1) fetch IV environment, 2) select strategy, 3) price it live, "
-            f"4) backtest it. Return the final JSON recommendation."
-        )),
+        HumanMessage(
+            content=(
+                f"Analyze the options market for {ticker} and recommend the best options strategy. "
+                f"The Portfolio Strategist recommends: {rec_summary}. "
+                f"Use your tools to: 1) fetch IV environment, 2) select strategy, 3) price it live, "
+                f"4) backtest it. Return the final JSON recommendation."
+            )
+        ),
     ]
 
     try:
@@ -175,9 +178,10 @@ async def run_options_analyst(state: FinSightState) -> dict[str, Any]:
 def _store_options_memory(ticker: str, rec: OptionsRecommendation) -> None:
     """Store options trade context in Redis for episodic memory."""
     try:
-        import redis
-        import os
         import json as _json
+        import os
+
+        import redis
 
         client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         key = f"options_memory:{ticker}"

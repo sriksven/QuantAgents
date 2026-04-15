@@ -2,8 +2,10 @@
 QuantAgents — Backtest MCP Server
 Runs vectorbt strategy backtests and Monte Carlo simulations.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -14,6 +16,7 @@ mcp = FastMCP("backtest")
 
 
 # ── Tool 1: Run Strategy Backtest ─────────────────────────────────────────────
+
 
 @mcp.tool()
 def run_backtest(
@@ -41,22 +44,23 @@ def run_backtest(
         win_rate, profit_factor, total_trades, calmar_ratio.
     """
     import json
+
     import numpy as np
 
     try:
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
 
         # Parse extra params
         params: dict = {}
         if strategy_params:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 params = json.loads(strategy_params)
-            except json.JSONDecodeError:
-                pass
 
         # Fetch price data
-        df = yf.download(ticker.upper(), start=start_date, end=end_date, auto_adjust=True, progress=False)
+        df = yf.download(
+            ticker.upper(), start=start_date, end=end_date, auto_adjust=True, progress=False
+        )
         if df.empty:
             return {"error": f"No price data for {ticker} between {start_date} and {end_date}"}
 
@@ -120,7 +124,7 @@ def run_backtest(
         equity_curve: list[float] = [initial_capital]
         shares = 0.0
 
-        for i, (date, price) in enumerate(close.items()):
+        for i, (_date, price) in enumerate(close.items()):
             price = float(price)
             if np.isnan(price):
                 equity_curve.append(equity)
@@ -136,11 +140,14 @@ def run_backtest(
                 exit_val = shares * price
                 trade_return = (price - entry_price) / entry_price
                 position_returns.append(trade_return)
-                trades.append({
-                    "entry": entry_price, "exit": price,
-                    "return_pct": round(trade_return * 100, 2),
-                    "pnl": round(exit_val - shares * entry_price, 2),
-                })
+                trades.append(
+                    {
+                        "entry": entry_price,
+                        "exit": price,
+                        "return_pct": round(trade_return * 100, 2),
+                        "pnl": round(exit_val - shares * entry_price, 2),
+                    }
+                )
                 cash = exit_val
                 shares = 0.0
                 in_position = False
@@ -154,8 +161,14 @@ def run_backtest(
             exit_val = shares * final_price
             trade_return = (final_price - entry_price) / entry_price
             position_returns.append(trade_return)
-            trades.append({"entry": entry_price, "exit": final_price,
-                           "return_pct": round(trade_return * 100, 2), "pnl": round(exit_val - shares * entry_price, 2)})
+            trades.append(
+                {
+                    "entry": entry_price,
+                    "exit": final_price,
+                    "return_pct": round(trade_return * 100, 2),
+                    "pnl": round(exit_val - shares * entry_price, 2),
+                }
+            )
             cash = exit_val
 
         final_equity = cash
@@ -172,7 +185,9 @@ def run_backtest(
 
         neg_rets = daily_returns[daily_returns < 0]
         downside_vol = float(np.std(neg_rets) * np.sqrt(252)) if len(neg_rets) > 0 else 0
-        sortino = float((np.mean(daily_returns) * 252 - 0.05) / downside_vol) if downside_vol > 0 else 0
+        sortino = (
+            float((np.mean(daily_returns) * 252 - 0.05) / downside_vol) if downside_vol > 0 else 0
+        )
 
         # Max drawdown
         running_max = np.maximum.accumulate(equity_arr)
@@ -189,12 +204,7 @@ def run_backtest(
         gross_loss = abs(sum(t["pnl"] for t in losses))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
-        meets_min = (
-            sharpe >= 1.0
-            and max_dd >= -0.25
-            and win_rate >= 0.45
-            and len(trades) >= 10
-        )
+        meets_min = sharpe >= 1.0 and max_dd >= -0.25 and win_rate >= 0.45 and len(trades) >= 10
 
         return {
             "ticker": ticker.upper(),
@@ -214,11 +224,16 @@ def run_backtest(
             "losing_trades": len(losses),
             "profit_factor": round(profit_factor, 3),
             "meets_minimum_thresholds": meets_min,
-            "rejection_reason": None if meets_min else (
-                f"Sharpe={sharpe:.2f}<1.0" if sharpe < 1.0 else
-                f"MaxDD={max_dd*100:.1f}%<-25%" if max_dd < -0.25 else
-                f"WinRate={win_rate:.0%}<45%" if win_rate < 0.45 else
-                f"Trades={len(trades)}<10"
+            "rejection_reason": None
+            if meets_min
+            else (
+                f"Sharpe={sharpe:.2f}<1.0"
+                if sharpe < 1.0
+                else f"MaxDD={max_dd * 100:.1f}%<-25%"
+                if max_dd < -0.25
+                else f"WinRate={win_rate:.0%}<45%"
+                if win_rate < 0.45
+                else f"Trades={len(trades)}<10"
             ),
         }
     except Exception as exc:
@@ -227,6 +242,7 @@ def run_backtest(
 
 
 # ── Tool 2: Run Monte Carlo Simulation ───────────────────────────────────────
+
 
 @mcp.tool()
 def run_monte_carlo(
@@ -265,14 +281,16 @@ def run_monte_carlo(
     profit_factor = base["profit_factor"] if base["profit_factor"] != float("inf") else 3.0
 
     if n_trades < 5:
-        return {"error": f"Too few trades ({n_trades}) for Monte Carlo simulation", "ticker": ticker}
+        return {
+            "error": f"Too few trades ({n_trades}) for Monte Carlo simulation",
+            "ticker": ticker,
+        }
 
     # Reconstruct approximate trade return distribution
     avg_win = abs(avg_win_pct) / 100 * (profit_factor / (1 + profit_factor))
     avg_loss = -avg_win / profit_factor
-    trade_returns = (
-        [avg_win] * int(win_rate * n_trades) +
-        [avg_loss] * (n_trades - int(win_rate * n_trades))
+    trade_returns = [avg_win] * int(win_rate * n_trades) + [avg_loss] * (
+        n_trades - int(win_rate * n_trades)
     )
     trade_returns = np.array(trade_returns)
 
@@ -287,7 +305,7 @@ def run_monte_carlo(
         equity = initial_capital
         ruined = False
         for r in shuffled:
-            equity *= (1 + r)
+            equity *= 1 + r
             if equity <= ruin_threshold:
                 ruined = True
                 break
@@ -308,16 +326,26 @@ def run_monte_carlo(
         "n_simulations": n_simulations,
         "probability_of_ruin_pct": round(ruin_count / n_simulations * 100, 2),
         "percentile_outcomes": {
-            "p5": {"equity": round(float(np.percentile(final_equities, 5)), 2),
-                   "return_pct": to_return_pct(float(np.percentile(final_equities, 5)))},
-            "p25": {"equity": round(float(np.percentile(final_equities, 25)), 2),
-                    "return_pct": to_return_pct(float(np.percentile(final_equities, 25)))},
-            "p50": {"equity": round(float(np.percentile(final_equities, 50)), 2),
-                    "return_pct": to_return_pct(float(np.percentile(final_equities, 50)))},
-            "p75": {"equity": round(float(np.percentile(final_equities, 75)), 2),
-                    "return_pct": to_return_pct(float(np.percentile(final_equities, 75)))},
-            "p95": {"equity": round(float(np.percentile(final_equities, 95)), 2),
-                    "return_pct": to_return_pct(float(np.percentile(final_equities, 95)))},
+            "p5": {
+                "equity": round(float(np.percentile(final_equities, 5)), 2),
+                "return_pct": to_return_pct(float(np.percentile(final_equities, 5))),
+            },
+            "p25": {
+                "equity": round(float(np.percentile(final_equities, 25)), 2),
+                "return_pct": to_return_pct(float(np.percentile(final_equities, 25))),
+            },
+            "p50": {
+                "equity": round(float(np.percentile(final_equities, 50)), 2),
+                "return_pct": to_return_pct(float(np.percentile(final_equities, 50))),
+            },
+            "p75": {
+                "equity": round(float(np.percentile(final_equities, 75)), 2),
+                "return_pct": to_return_pct(float(np.percentile(final_equities, 75))),
+            },
+            "p95": {
+                "equity": round(float(np.percentile(final_equities, 95)), 2),
+                "return_pct": to_return_pct(float(np.percentile(final_equities, 95))),
+            },
         },
         "mean_equity": round(float(np.mean(final_equities)), 2),
         "std_equity": round(float(np.std(final_equities)), 2),

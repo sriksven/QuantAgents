@@ -1,4 +1,5 @@
 """Health check router."""
+
 import time
 from typing import Annotated
 

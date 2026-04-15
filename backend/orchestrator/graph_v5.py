@@ -23,31 +23,42 @@ Full Phase 7 topology:
       │
   save_memory → END
 """
+
 from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from orchestrator.state import FinSightState
-from orchestrator.nodes import load_memory, run_market_researcher, run_fundamental_analyst, save_to_memory
-from orchestrator.nodes_phase4 import run_technical_analyst, run_risk_assessor, run_debate_responses, run_portfolio_strategist
+from orchestrator.graph_v3 import load_rl_context
+from orchestrator.graph_v4 import (
+    debate_or_strategy,
+    run_options_executor,
+    should_debate,
+)
+from orchestrator.nodes import (
+    load_memory,
+    run_fundamental_analyst,
+    run_market_researcher,
+    save_to_memory,
+)
+from orchestrator.nodes_phase4 import (
+    run_debate_responses,
+    run_portfolio_strategist,
+    run_risk_assessor,
+    run_technical_analyst,
+)
 from orchestrator.nodes_phase5 import run_backtest_engine, run_trade_executor
 from orchestrator.nodes_phase6 import run_options_analyst
 from orchestrator.nodes_phase7 import run_quantum_optimizer
-from orchestrator.graph_v4 import (
-    should_debate,
-    debate_or_strategy,
-    run_options_executor,
-)
-from orchestrator.graph_v3 import load_rl_context
+from orchestrator.state import FinSightState
 
 logger = logging.getLogger(__name__)
 
 
 # ── Execution path selector (v5: quantum-informed) ────────────────────────────
+
 
 def select_execution_path_v5(state: FinSightState) -> str:
     """
@@ -66,7 +77,9 @@ def select_execution_path_v5(state: FinSightState) -> str:
     # Check if quantum optimizer recommends a meaningful allocation
     q_weight = 0.0
     if quantum_allocs:
-        ticker_alloc = next((a for a in quantum_allocs if a.ticker == state.get("ticker", "")), None)
+        ticker_alloc = next(
+            (a for a in quantum_allocs if a.ticker == state.get("ticker", "")), None
+        )
         q_weight = ticker_alloc.quantum_weight if ticker_alloc else 0.0
 
     if not rec or rec.action == "HOLD":
@@ -97,6 +110,7 @@ def select_execution_path_v5(state: FinSightState) -> str:
 
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
+
 
 def build_graph_v5():
     """Build and compile the Phase 7 graph."""
@@ -134,14 +148,22 @@ def build_graph_v5():
     graph.add_edge("technical_analyst", "risk_assessor")
 
     # ── Conditional debate ────────────────────────────────────────────────────
-    graph.add_conditional_edges("risk_assessor", should_debate, {
-        "debate_responses": "debate_responses",
-        "portfolio_strategist": "portfolio_strategist",
-    })
-    graph.add_conditional_edges("debate_responses", debate_or_strategy, {
-        "risk_assessor": "risk_assessor",
-        "portfolio_strategist": "portfolio_strategist",
-    })
+    graph.add_conditional_edges(
+        "risk_assessor",
+        should_debate,
+        {
+            "debate_responses": "debate_responses",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
+    graph.add_conditional_edges(
+        "debate_responses",
+        debate_or_strategy,
+        {
+            "risk_assessor": "risk_assessor",
+            "portfolio_strategist": "portfolio_strategist",
+        },
+    )
 
     # ── Triple parallel validation ─────────────────────────────────────────────
     graph.add_edge("portfolio_strategist", "backtest_engine")

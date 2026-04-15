@@ -7,12 +7,11 @@ Generates synthetic + historically-grounded training samples for 3 ML models:
 
 Output: Parquet files in data/training/{model_name}/
 """
+
 from __future__ import annotations
 
 import logging
-import os
 import random
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +21,31 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 TICKERS = [
-    "AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "TSLA", "META", "JPM",
-    "GS", "BAC", "XOM", "CVX", "JNJ", "PFE", "LLY", "V", "MA",
-    "UNH", "HD", "WMT", "SPY", "QQQ", "IWM", "GLD", "TLT",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "GOOG",
+    "AMZN",
+    "TSLA",
+    "META",
+    "JPM",
+    "GS",
+    "BAC",
+    "XOM",
+    "CVX",
+    "JNJ",
+    "PFE",
+    "LLY",
+    "V",
+    "MA",
+    "UNH",
+    "HD",
+    "WMT",
+    "SPY",
+    "QQQ",
+    "IWM",
+    "GLD",
+    "TLT",
 ]
 
 OUTPUT_DIR = Path("data/training")
@@ -33,6 +54,7 @@ rng = np.random.default_rng(42)
 
 
 # ── Feature helpers ────────────────────────────────────────────────────────────
+
 
 def _realistic_confidence() -> float:
     """Agent-reported confidence: slightly over-confident (mean ~0.68)."""
@@ -63,7 +85,7 @@ def _market_features() -> dict[str, Any]:
         "hv_iv_ratio": round(hv_20 / iv, 3),
         "rsi_14": round(float(rng.uniform(20, 80)), 1),
         "macd_signal": round(float(rng.normal(0, 0.5)), 3),
-        "bb_position": round(float(rng.uniform(-1.5, 1.5)), 3),   # Bollinger Band position
+        "bb_position": round(float(rng.uniform(-1.5, 1.5)), 3),  # Bollinger Band position
         "volume_ratio_20d": round(float(rng.lognormal(0, 0.3)), 3),
         "price_momentum_21d": round(float(rng.normal(0.02, 0.06)), 4),
         "pe_ratio": round(float(rng.uniform(8, 60)), 1),
@@ -83,6 +105,7 @@ def _market_features() -> dict[str, Any]:
 
 
 # ── Dataset 1: Confidence Calibrator ─────────────────────────────────────────
+
 
 def generate_confidence_calibrator(n_samples: int = 15_000) -> pd.DataFrame:
     """
@@ -113,34 +136,44 @@ def generate_confidence_calibrator(n_samples: int = 15_000) -> pd.DataFrame:
         debate_bonus = min(debate_rounds * 0.02, 0.06)
 
         # True probability of being correct
-        p_correct = float(np.clip(
-            0.52 + (reported_conf - 0.65) * 0.4 + regime_bonus + iv_penalty + debate_bonus
-            + float(rng.normal(0, 0.05)),
-            0.1, 0.9
-        ))
+        p_correct = float(
+            np.clip(
+                0.52
+                + (reported_conf - 0.65) * 0.4
+                + regime_bonus
+                + iv_penalty
+                + debate_bonus
+                + float(rng.normal(0, 0.05)),
+                0.1,
+                0.9,
+            )
+        )
         true_correct = int(rng.binomial(1, p_correct))
 
-        records.append({
-            "reported_confidence": round(reported_conf, 4),
-            "action": action,
-            "debate_rounds": debate_rounds,
-            "sharpe_context": round(market["hv_20d"] / max(market["implied_vol"], 0.01), 3),
-            "iv_rank": market["iv_rank"],
-            "rsi_14": market["rsi_14"],
-            "sentiment_score": market["sentiment_score"],
-            "momentum_21d": market["price_momentum_21d"],
-            "market_regime": market["market_regime"],
-            "macro_vix": market["macro_vix"],
-            "analyst_consensus": market["analyst_consensus"],
-            "earnings_surprise": market["earnings_surprise_recent"],
-            "true_correct": true_correct,
-            "calibration_gap": round(reported_conf - p_correct, 4),  # over/under confident
-        })
+        records.append(
+            {
+                "reported_confidence": round(reported_conf, 4),
+                "action": action,
+                "debate_rounds": debate_rounds,
+                "sharpe_context": round(market["hv_20d"] / max(market["implied_vol"], 0.01), 3),
+                "iv_rank": market["iv_rank"],
+                "rsi_14": market["rsi_14"],
+                "sentiment_score": market["sentiment_score"],
+                "momentum_21d": market["price_momentum_21d"],
+                "market_regime": market["market_regime"],
+                "macro_vix": market["macro_vix"],
+                "analyst_consensus": market["analyst_consensus"],
+                "earnings_surprise": market["earnings_surprise_recent"],
+                "true_correct": true_correct,
+                "calibration_gap": round(reported_conf - p_correct, 4),  # over/under confident
+            }
+        )
 
     return pd.DataFrame(records)
 
 
 # ── Dataset 2: Reward Predictor ───────────────────────────────────────────────
+
 
 def generate_reward_predictor(n_samples: int = 12_000) -> pd.DataFrame:
     """
@@ -156,8 +189,11 @@ def generate_reward_predictor(n_samples: int = 12_000) -> pd.DataFrame:
 
         # Base return: momentum + regime + fundamental quality
         regime_mult = {
-            "bull": 0.8, "bear": -0.6, "sideways": 0.0,
-            "volatile": 0.2, "recovery": 0.5
+            "bull": 0.8,
+            "bear": -0.6,
+            "sideways": 0.0,
+            "volatile": 0.2,
+            "recovery": 0.5,
         }.get(market["market_regime"], 0.0)
 
         if action == "HOLD":
@@ -181,39 +217,44 @@ def generate_reward_predictor(n_samples: int = 12_000) -> pd.DataFrame:
         )
 
         # Time decay: returns flatten out over time with mean-reversion
-        def reward_at(days: int, noise_scale: float = 0.02) -> float:
+        def reward_at(
+            days: int, noise_scale: float = 0.02, base_return: float = base_return
+        ) -> float:
             decay = 1.0 - (days - 30) / 120  # slight mean reversion
             time_penalty = 0.001 * (days / 30)
             raw = base_return * decay + float(rng.normal(0, noise_scale))
             return float(np.clip(raw - time_penalty, -0.5, 0.5))
 
-        records.append({
-            "reported_confidence": round(reported_conf, 4),
-            "action": action,
-            "debate_rounds": _debate_rounds(),
-            "iv_rank": market["iv_rank"],
-            "hv_20d": market["hv_20d"],
-            "rsi_14": market["rsi_14"],
-            "macd_signal": market["macd_signal"],
-            "bb_position": market["bb_position"],
-            "volume_ratio": market["volume_ratio_20d"],
-            "momentum_21d": market["price_momentum_21d"],
-            "revenue_growth": market["revenue_growth_yoy"],
-            "fcf_yield": market["free_cash_flow_yield"],
-            "short_interest": market["short_interest"],
-            "sentiment_score": market["sentiment_score"],
-            "macro_vix": market["macro_vix"],
-            "macro_10y_yield": market["macro_10y_yield"],
-            "market_regime": market["market_regime"],
-            "reward_30d": round(reward_at(30, 0.015), 5),
-            "reward_60d": round(reward_at(60, 0.025), 5),
-            "reward_90d": round(reward_at(90, 0.035), 5),
-        })
+        records.append(
+            {
+                "reported_confidence": round(reported_conf, 4),
+                "action": action,
+                "debate_rounds": _debate_rounds(),
+                "iv_rank": market["iv_rank"],
+                "hv_20d": market["hv_20d"],
+                "rsi_14": market["rsi_14"],
+                "macd_signal": market["macd_signal"],
+                "bb_position": market["bb_position"],
+                "volume_ratio": market["volume_ratio_20d"],
+                "momentum_21d": market["price_momentum_21d"],
+                "revenue_growth": market["revenue_growth_yoy"],
+                "fcf_yield": market["free_cash_flow_yield"],
+                "short_interest": market["short_interest"],
+                "sentiment_score": market["sentiment_score"],
+                "macro_vix": market["macro_vix"],
+                "macro_10y_yield": market["macro_10y_yield"],
+                "market_regime": market["market_regime"],
+                "reward_30d": round(reward_at(30, 0.015), 5),
+                "reward_60d": round(reward_at(60, 0.025), 5),
+                "reward_90d": round(reward_at(90, 0.035), 5),
+            }
+        )
 
     return pd.DataFrame(records)
 
 
 # ── Dataset 3: Options Pricer (IV Rank Predictor) ─────────────────────────────
+
 
 def generate_options_pricer(n_samples: int = 10_000) -> pd.DataFrame:
     """
@@ -233,28 +274,31 @@ def generate_options_pricer(n_samples: int = 10_000) -> pd.DataFrame:
         iv_rank_noisy = float(np.clip(iv_rank + rng.normal(0, 5), 0, 100))
         iv_rank_bucket = 0 if iv_rank_noisy < 30 else (2 if iv_rank_noisy > 70 else 1)
 
-        records.append({
-            "hv_20d": market["hv_20d"],
-            "hv_60d": market["hv_60d"],
-            "hv_iv_ratio": market["hv_iv_ratio"],
-            "rsi_14": market["rsi_14"],
-            "bb_position": market["bb_position"],
-            "volume_ratio": market["volume_ratio_20d"],
-            "momentum_21d": market["price_momentum_21d"],
-            "short_interest": market["short_interest"],
-            "macro_vix": market["macro_vix"],
-            "macro_dxy": market["macro_dxy"],
-            "market_regime": market["market_regime"],
-            "earnings_surprise": market["earnings_surprise_recent"],
-            "analyst_consensus": market["analyst_consensus"],
-            "iv_rank_bucket": iv_rank_bucket,
-            "iv_rank_continuous": round(iv_rank_noisy, 1),
-        })
+        records.append(
+            {
+                "hv_20d": market["hv_20d"],
+                "hv_60d": market["hv_60d"],
+                "hv_iv_ratio": market["hv_iv_ratio"],
+                "rsi_14": market["rsi_14"],
+                "bb_position": market["bb_position"],
+                "volume_ratio": market["volume_ratio_20d"],
+                "momentum_21d": market["price_momentum_21d"],
+                "short_interest": market["short_interest"],
+                "macro_vix": market["macro_vix"],
+                "macro_dxy": market["macro_dxy"],
+                "market_regime": market["market_regime"],
+                "earnings_surprise": market["earnings_surprise_recent"],
+                "analyst_consensus": market["analyst_consensus"],
+                "iv_rank_bucket": iv_rank_bucket,
+                "iv_rank_continuous": round(iv_rank_noisy, 1),
+            }
+        )
 
     return pd.DataFrame(records)
 
 
 # ── Main generator ────────────────────────────────────────────────────────────
+
 
 def generate_all(output_dir: Path | None = None, verbose: bool = True) -> dict[str, Path]:
     """Generate all 3 datasets and write to parquet."""

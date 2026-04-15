@@ -3,6 +3,7 @@ QuantAgents — WebSocket Streaming Endpoint
 Provides real-time agent updates via WebSocket for the Analysis Console.
 Complements the SSE endpoint with bi-directional support (e.g. cancel mid-run).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,18 +29,20 @@ _active_tasks: dict[str, asyncio.Task] = {}
 async def _send(ws: WebSocket, event: str, data: dict[str, Any]) -> None:
     """Send a structured event over WebSocket."""
     with contextlib.suppress(Exception):
-        await ws.send_text(json.dumps({"event": event, "data": data, "ts": datetime.utcnow().isoformat()}))
+        await ws.send_text(
+            json.dumps({"event": event, "data": data, "ts": datetime.utcnow().isoformat()})
+        )
 
 
 @router.websocket("/analyze/{ticker}")
 async def ws_analyze(ws: WebSocket, ticker: str):
     """
     WebSocket endpoint for real-time analysis streaming.
-    
+
     Client sends:
       {"action": "start", "user_id": "...", "query": "..."}
       {"action": "cancel"}
-    
+
     Server sends events:
       analysis_started | memory_loaded | agent_started | agent_complete
       debate_started | debate_round_complete | strategy_complete
@@ -62,12 +65,21 @@ async def ws_analyze(ws: WebSocket, ticker: str):
         user_id = msg.get("user_id", "default")
         query = msg.get("query")
 
-        await _send(ws, "analysis_started", {
-            "analysis_id": analysis_id,
-            "ticker": ticker,
-            "agents": ["market_researcher", "fundamental_analyst", "technical_analyst",
-                       "risk_assessor", "portfolio_strategist"],
-        })
+        await _send(
+            ws,
+            "analysis_started",
+            {
+                "analysis_id": analysis_id,
+                "ticker": ticker,
+                "agents": [
+                    "market_researcher",
+                    "fundamental_analyst",
+                    "technical_analyst",
+                    "risk_assessor",
+                    "portfolio_strategist",
+                ],
+            },
+        )
 
         state = initial_state(ticker, user_id, query)
         state["analysis_id"] = analysis_id
@@ -79,12 +91,20 @@ async def ws_analyze(ws: WebSocket, ticker: str):
                 async for chunk in graph.astream(state, stream_mode="updates"):
                     for node_name, node_output in chunk.items():
                         if node_name == "load_memory":
-                            await _send(ws, "memory_loaded", {
-                                "has_episodic": bool(node_output.get("episodic_context")),
-                                "has_semantic": bool(node_output.get("semantic_context")),
-                            })
+                            await _send(
+                                ws,
+                                "memory_loaded",
+                                {
+                                    "has_episodic": bool(node_output.get("episodic_context")),
+                                    "has_semantic": bool(node_output.get("semantic_context")),
+                                },
+                            )
 
-                        elif node_name in ("market_researcher", "fundamental_analyst", "technical_analyst"):
+                        elif node_name in (
+                            "market_researcher",
+                            "fundamental_analyst",
+                            "technical_analyst",
+                        ):
                             # Determine report key
                             report_key_map = {
                                 "market_researcher": "market_report",
@@ -92,50 +112,81 @@ async def ws_analyze(ws: WebSocket, ticker: str):
                                 "technical_analyst": "technical_report",
                             }
                             report = node_output.get(report_key_map.get(node_name, ""))
-                            await _send(ws, "agent_complete", {
-                                "agent": node_name,
-                                "confidence": report.confidence if report else None,
-                                "latency_ms": report.latency_ms if report else None,
-                                "preview": (report.content[:300] if report else "") if isinstance(report, object) and hasattr(report, "content") else "",
-                            })
+                            await _send(
+                                ws,
+                                "agent_complete",
+                                {
+                                    "agent": node_name,
+                                    "confidence": report.confidence if report else None,
+                                    "latency_ms": report.latency_ms if report else None,
+                                    "preview": (report.content[:300] if report else "")
+                                    if isinstance(report, object) and hasattr(report, "content")
+                                    else "",
+                                },
+                            )
 
                         elif node_name == "risk_assessor":
                             challenges = node_output.get("challenges") or []
-                            new_challenges = [c for c in challenges if not getattr(c, "resolved", False)]
-                            await _send(ws, "debate_started", {
-                                "challenge_count": len(new_challenges),
-                                "assessment": node_output.get("current_phase", "debate"),
-                                "challenges": [
-                                    {"to": getattr(c, "to_agent", ""), "question": getattr(c, "question", "")[:200]}
-                                    for c in new_challenges[:5]
-                                ],
-                            })
+                            new_challenges = [
+                                c for c in challenges if not getattr(c, "resolved", False)
+                            ]
+                            await _send(
+                                ws,
+                                "debate_started",
+                                {
+                                    "challenge_count": len(new_challenges),
+                                    "assessment": node_output.get("current_phase", "debate"),
+                                    "challenges": [
+                                        {
+                                            "to": getattr(c, "to_agent", ""),
+                                            "question": getattr(c, "question", "")[:200],
+                                        }
+                                        for c in new_challenges[:5]
+                                    ],
+                                },
+                            )
 
                         elif node_name == "debate_responses":
                             rounds = node_output.get("debate_rounds", 0)
                             challenges = node_output.get("challenges") or []
                             resolved = sum(1 for c in challenges if getattr(c, "resolved", False))
-                            await _send(ws, "debate_round_complete", {
-                                "round": rounds,
-                                "resolved": resolved,
-                                "total": len(challenges),
-                            })
+                            await _send(
+                                ws,
+                                "debate_round_complete",
+                                {
+                                    "round": rounds,
+                                    "resolved": resolved,
+                                    "total": len(challenges),
+                                },
+                            )
 
                         elif node_name == "portfolio_strategist":
                             rec = node_output.get("recommendation")
-                            await _send(ws, "strategy_complete", {
-                                "action": rec.action if rec else None,
-                                "confidence": rec.confidence if rec else None,
-                                "reasoning": rec.reasoning_summary if hasattr(rec, "reasoning_summary") else None,
-                            })
+                            await _send(
+                                ws,
+                                "strategy_complete",
+                                {
+                                    "action": rec.action if rec else None,
+                                    "confidence": rec.confidence if rec else None,
+                                    "reasoning": rec.reasoning_summary
+                                    if hasattr(rec, "reasoning_summary")
+                                    else None,
+                                },
+                            )
 
                         elif node_name == "save_memory":
-                            await _send(ws, "analysis_complete", {
-                                "analysis_id": analysis_id,
-                                "ticker": ticker,
-                            })
+                            await _send(
+                                ws,
+                                "analysis_complete",
+                                {
+                                    "analysis_id": analysis_id,
+                                    "ticker": ticker,
+                                },
+                            )
             except Exception as e:
-                logger.error("Internal LangGraph failure during %s: %s", analysis_id, e, exc_info=True)
+                logger.error(
+                    "Internal LangGraph failure during %s: %s", analysis_id, e, exc_info=True
+                )
                 await _send(ws, "error", {"message": f"Graph execution failed: {str(e)}"})
 
         analysis_task = asyncio.create_task(run_analysis())
@@ -169,7 +220,5 @@ async def ws_analyze(ws: WebSocket, ticker: str):
         await _send(ws, "error", {"message": str(exc)})
     finally:
         _active_tasks.pop(analysis_id, None)
-        try:
+        with contextlib.suppress(Exception):
             await ws.close()
-        except Exception:
-            pass

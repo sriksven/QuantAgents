@@ -17,6 +17,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
 
 jobs:
   fetch-and-validate:
@@ -127,21 +130,19 @@ jobs:
       # ── Notifications ─────────────────────────────────────────────────────
 
       - name: Notify success
-        if: success()
+        if: success() && env.SLACK_BOT_TOKEN != '' && env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {"text": ":white_check_mark: *Data Pipeline completed successfully* — $(date -u +%Y-%m-%d)"}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true
 
       - name: Notify failure
-        if: failure()
+        if: failure() && env.SLACK_BOT_TOKEN != '' && env.SLACK_CHANNEL_ID != ''
         uses: slackapi/slack-github-action@v1
         with:
-          channel-id: ${{ vars.SLACK_CHANNEL_ID }}
+          channel-id: ${{ env.SLACK_CHANNEL_ID }}
           payload: |
             {
               "text": ":red_circle: *Data Pipeline FAILED*",
@@ -152,6 +153,4 @@ jobs:
                 ]
               }]
             }
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         continue-on-error: true

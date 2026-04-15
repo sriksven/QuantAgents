@@ -6,6 +6,7 @@ and environment variables for all 5 GitHub Actions workflows.
 NOTE: PyYAML parses YAML's reserved 'on:' key as Python boolean True.
 Use w[True] or the _triggers() helper everywhere instead of w["on"].
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,6 +34,7 @@ def _triggers(w: dict) -> dict:
 
 
 # ─── tests.yml ────────────────────────────────────────────────────────────────
+
 
 class TestTestsWorkflow:
     def test_triggers_on_push_and_pr(self):
@@ -90,8 +92,8 @@ class TestTestsWorkflow:
         assert "lint" in needs
 
 
-
 # ─── data_pipeline.yml ────────────────────────────────────────────────────────
+
 
 class TestDataPipelineWorkflow:
     def test_scheduled_trigger(self):
@@ -130,6 +132,7 @@ class TestDataPipelineWorkflow:
 
 
 # ─── model_training.yml ────────────────────────────────────────────────────────
+
 
 class TestModelTrainingWorkflow:
     def test_triggers_on_ml_path_changes(self):
@@ -171,6 +174,7 @@ class TestModelTrainingWorkflow:
 
 # ─── bias_detection.yml ───────────────────────────────────────────────────────
 
+
 class TestBiasDetectionWorkflow:
     def test_triggers_after_model_training(self):
         w = _load("bias_detection.yml")
@@ -208,6 +212,7 @@ class TestBiasDetectionWorkflow:
 
 
 # ─── deploy.yml ───────────────────────────────────────────────────────────────
+
 
 class TestDeployWorkflow:
     def test_triggers_after_bias_detection(self):
@@ -267,5 +272,7 @@ class TestDeployWorkflow:
         assert "notify" in w["jobs"]
         notify_job = w["jobs"]["notify"]
         # Should always run
-        assert notify_job.get("if", "").startswith("always()") or \
-               (WORKFLOWS_DIR / "deploy.yml").read_text().count("Notify") >= 2
+        assert (
+            notify_job.get("if", "").startswith("always()")
+            or (WORKFLOWS_DIR / "deploy.yml").read_text().count("Notify") >= 2
+        )

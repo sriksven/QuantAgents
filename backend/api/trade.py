@@ -3,6 +3,7 @@ QuantAgents — POST /api/trade endpoint
 Triggers a full analysis + backtest validation + trade execution.
 Wraps graph_v3 with SSE streaming support.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,9 @@ class TradeRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10)
     user_id: str = Field("default")
     query: str | None = None
-    auto_execute: bool = Field(False, description="If true, Trade Executor will place orders automatically")
+    auto_execute: bool = Field(
+        False, description="If true, Trade Executor will place orders automatically"
+    )
     stream: bool = Field(True)
 
 
@@ -61,7 +64,9 @@ async def _stream_trade(ticker: str, user_id: str, query: str | None, analysis_i
         async for chunk in graph.astream(state, stream_mode="updates"):
             for node_name, node_output in chunk.items():
                 if node_name == "load_memory":
-                    yield _sse("memory_loaded", {"has_episodic": bool(node_output.get("episodic_context"))})
+                    yield _sse(
+                        "memory_loaded", {"has_episodic": bool(node_output.get("episodic_context"))}
+                    )
 
                 elif node_name == "load_rl_context":
                     yield _sse("rl_context_loaded", {"has_rl": bool(node_output.get("rl_context"))})
@@ -73,47 +78,65 @@ async def _stream_trade(ticker: str, user_id: str, query: str | None, analysis_i
                         "technical_analyst": "technical_report",
                     }
                     report = node_output.get(key_map[node_name])
-                    yield _sse("agent_complete", {
-                        "agent": node_name,
-                        "confidence": report.confidence if report else None,
-                    })
+                    yield _sse(
+                        "agent_complete",
+                        {
+                            "agent": node_name,
+                            "confidence": report.confidence if report else None,
+                        },
+                    )
 
                 elif node_name == "risk_assessor":
                     chals = node_output.get("challenges") or []
-                    yield _sse("debate_started", {"challenge_count": len([c for c in chals if not c.resolved])})
+                    yield _sse(
+                        "debate_started",
+                        {"challenge_count": len([c for c in chals if not c.resolved])},
+                    )
 
                 elif node_name == "debate_responses":
                     yield _sse("debate_round", {"round": node_output.get("debate_rounds", 0)})
 
                 elif node_name == "portfolio_strategist":
                     rec = node_output.get("recommendation")
-                    yield _sse("recommendation_ready", {
-                        "action": rec.action if rec else None,
-                        "confidence": rec.confidence if rec else None,
-                    })
+                    yield _sse(
+                        "recommendation_ready",
+                        {
+                            "action": rec.action if rec else None,
+                            "confidence": rec.confidence if rec else None,
+                        },
+                    )
 
                 elif node_name == "backtest_engine":
                     bt = node_output.get("backtest_result")
-                    yield _sse("backtest_complete", {
-                        "validated": bt.validated if bt else None,
-                        "sharpe": bt.sharpe_ratio if bt else None,
-                        "rejection_reason": bt.rejection_reason if bt else None,
-                    })
+                    yield _sse(
+                        "backtest_complete",
+                        {
+                            "validated": bt.validated if bt else None,
+                            "sharpe": bt.sharpe_ratio if bt else None,
+                            "rejection_reason": bt.rejection_reason if bt else None,
+                        },
+                    )
 
                 elif node_name == "trade_executor":
-                    yield _sse("trade_executed", {
-                        "order_placed": node_output.get("order_placed", False),
-                        "order_id": node_output.get("order_id"),
-                        "details": node_output.get("order_details", {}),
-                    })
+                    yield _sse(
+                        "trade_executed",
+                        {
+                            "order_placed": node_output.get("order_placed", False),
+                            "order_id": node_output.get("order_id"),
+                            "details": node_output.get("order_details", {}),
+                        },
+                    )
 
                 elif node_name == "save_memory":
                     latency = int((datetime.utcnow() - t_start).total_seconds() * 1000)
-                    yield _sse("trade_complete", {
-                        "analysis_id": analysis_id,
-                        "ticker": ticker,
-                        "latency_ms": latency,
-                    })
+                    yield _sse(
+                        "trade_complete",
+                        {
+                            "analysis_id": analysis_id,
+                            "ticker": ticker,
+                            "latency_ms": latency,
+                        },
+                    )
 
     except Exception as exc:
         logger.error("Trade stream error for %s: %s", ticker, exc, exc_info=True)

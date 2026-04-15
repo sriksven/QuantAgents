@@ -3,6 +3,7 @@ QuantAgents — Phase 7 Quantum Optimizer Agent Node
 Uses Qiskit QAOA to optimize multi-asset portfolio allocation
 and cross-validates results against classical Markowitz.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,9 +14,9 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from orchestrator.state import FinSightState, QuantumAllocation
 from orchestrator.nodes import _get_langfuse_callback, _get_llm
 from orchestrator.nodes_phase4 import _load_tools_from_servers
+from orchestrator.state import FinSightState, QuantumAllocation
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +85,9 @@ async def run_quantum_optimizer(state: FinSightState) -> dict[str, Any]:
     t_start = time.time()
 
     rec_summary = (
-        f"Action={rec.action}, Confidence={rec.confidence:.0%}, "
-        f"Time Horizon={rec.time_horizon}"
-        if rec else "No recommendation yet."
+        f"Action={rec.action}, Confidence={rec.confidence:.0%}, Time Horizon={rec.time_horizon}"
+        if rec
+        else "No recommendation yet."
     )
 
     system_prompt = QUANTUM_OPTIMIZER_SYSTEM.format(
@@ -100,12 +101,14 @@ async def run_quantum_optimizer(state: FinSightState) -> dict[str, Any]:
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=(
-            f"Optimize the portfolio allocation for {ticker}. "
-            f"Build a 4-6 stock universe including {ticker} and sector peers/ETFs. "
-            f"Run QAOA optimization, quantum VaR, and correlation analysis. "
-            f"Return the JSON with quantum and classical weights for {ticker}."
-        )),
+        HumanMessage(
+            content=(
+                f"Optimize the portfolio allocation for {ticker}. "
+                f"Build a 4-6 stock universe including {ticker} and sector peers/ETFs. "
+                f"Run QAOA optimization, quantum VaR, and correlation analysis. "
+                f"Return the JSON with quantum and classical weights for {ticker}."
+            )
+        ),
     ]
 
     try:

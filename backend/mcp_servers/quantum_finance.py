@@ -7,6 +7,7 @@ on a simulated quantum backend. Falls back gracefully to classical Markowitz if 
 is unavailable or circuit depth is too large. Quantum VaR uses amplitude estimation
 principles, approximated via quantum-inspired Monte Carlo for the simulator.
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,15 +21,18 @@ mcp = FastMCP("quantum-finance")
 
 # ── Helper: check Qiskit availability ────────────────────────────────────────
 
+
 def _qiskit_available() -> bool:
     try:
         import qiskit  # noqa: F401
+
         return True
     except ImportError:
         return False
 
 
 # ── Tool 1: QAOA Portfolio Optimization ─────────────────────────────────────
+
 
 @mcp.tool()
 def optimize_portfolio_qaoa(
@@ -68,8 +72,10 @@ def optimize_portfolio_qaoa(
     # Fetch returns data
     try:
         import yfinance as yf
-        prices = yf.download(ticker_list, start=start_date, end=end_date,
-                             auto_adjust=True, progress=False)["Close"]
+
+        prices = yf.download(
+            ticker_list, start=start_date, end=end_date, auto_adjust=True, progress=False
+        )["Close"]
         if hasattr(prices, "squeeze"):
             prices = prices.squeeze()
         if prices.empty:
@@ -78,8 +84,8 @@ def optimize_portfolio_qaoa(
     except Exception as exc:
         return {"error": f"Failed to fetch price data: {exc}"}
 
-    mu = returns.mean().values * 252          # annualized expected returns
-    cov = returns.cov().values * 252          # annualized covariance matrix
+    mu = returns.mean().values * 252  # annualized expected returns
+    cov = returns.cov().values * 252  # annualized covariance matrix
 
     # ── Classical Markowitz baseline ─────────────────────────────────────────
     classical_weights = _classical_markowitz(mu, cov, risk_aversion, n_assets, budget)
@@ -93,14 +99,18 @@ def optimize_portfolio_qaoa(
 
     if _qiskit_available() and n_assets <= 6:
         try:
-            qaoa_weights, quantum_backend = _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps)
+            qaoa_weights, quantum_backend = _qaoa_optimize(
+                mu, cov, risk_aversion, n_assets, budget, n_reps
+            )
         except Exception as exc:
             logger.warning("QAOA failed, falling back to classical: %s", exc)
             qaoa_notes.append(f"QAOA failed ({exc}), using classical fallback")
 
     if qaoa_weights is None:
         # Classical fallback with quantum-inspired perturbation
-        qaoa_weights, quantum_backend = _quantum_inspired_optimize(mu, cov, risk_aversion, n_assets, budget)
+        qaoa_weights, quantum_backend = _quantum_inspired_optimize(
+            mu, cov, risk_aversion, n_assets, budget
+        )
         if not qaoa_notes:
             qaoa_notes.append("Qiskit unavailable — using quantum-inspired simulated annealing")
 
@@ -108,12 +118,12 @@ def optimize_portfolio_qaoa(
     quantum_var_95 = _portfolio_var_95(mu, cov, np.array(qaoa_weights))
 
     # Divergence analysis
-    weight_diff = [abs(q - c) for q, c in zip(qaoa_weights, classical_weights)]
+    weight_diff = [abs(q - c) for q, c in zip(qaoa_weights, classical_weights, strict=True)]
     max_div = max(weight_diff) if weight_diff else 0
-    divergence_note = (
-        f"Max weight divergence: {max_div:.1%}. "
-        + ("Quantum significantly different — review quantum allocation." if max_div > 0.10
-           else "Quantum and classical largely agree.")
+    divergence_note = f"Max weight divergence: {max_div:.1%}. " + (
+        "Quantum significantly different — review quantum allocation."
+        if max_div > 0.10
+        else "Quantum and classical largely agree."
     )
     if qaoa_notes:
         divergence_note += " [" + " | ".join(qaoa_notes) + "]"
@@ -124,21 +134,26 @@ def optimize_portfolio_qaoa(
         "backend": quantum_backend,
         "risk_aversion": risk_aversion,
         "n_qaoa_reps": n_reps,
-        "quantum_weights": {t: round(w, 4) for t, w in zip(ticker_list, qaoa_weights)},
-        "classical_weights": {t: round(w, 4) for t, w in zip(ticker_list, classical_weights)},
+        "quantum_weights": {t: round(w, 4) for t, w in zip(ticker_list, qaoa_weights, strict=True)},
+        "classical_weights": {
+            t: round(w, 4) for t, w in zip(ticker_list, classical_weights, strict=True)
+        },
         "quantum_sharpe": round(quantum_sharpe, 3),
         "classical_sharpe": round(classical_sharpe, 3),
         "quantum_var_95": round(quantum_var_95, 4),
         "classical_var_95": round(classical_var_95, 4),
         "quantum_outperforms_classical": quantum_sharpe > classical_sharpe,
         "divergence_note": divergence_note,
-        "expected_returns_annual": {t: round(float(m), 4) for t, m in zip(ticker_list, mu)},
+        "expected_returns_annual": {
+            t: round(float(m), 4) for t, m in zip(ticker_list, mu, strict=True)
+        },
     }
 
 
 def _classical_markowitz(mu, cov, risk_aversion, n_assets, budget) -> list[float]:
     """Solve mean-variance optimization via analytical/scipy."""
     import numpy as np
+
     try:
         from scipy.optimize import minimize
 
@@ -180,7 +195,7 @@ def _quantum_inspired_optimize(mu, cov, risk_aversion, n_assets, budget) -> tupl
 
     current_weights = best_weights.copy()
 
-    for step in range(2000):
+    for _step in range(2000):
         # Random walk perturbation
         idx_a = rng.integers(n_assets)
         idx_b = rng.integers(n_assets)
@@ -214,7 +229,6 @@ def _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps) -> tuple[li
     """
     import numpy as np
     from qiskit import QuantumCircuit, transpile
-    from qiskit.circuit import ParameterVector
     from qiskit_aer import AerSimulator
     from scipy.optimize import minimize as scipy_minimize
 
@@ -228,8 +242,9 @@ def _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps) -> tuple[li
     def qubo_cost(x_binary):
         """QUBO objective: maximize return - risk, with cardinality constraint."""
         ret = sum(mu[i] * x_binary[i] for i in range(n_assets))
-        var = sum(cov[i][j] * x_binary[i] * x_binary[j]
-                  for i in range(n_assets) for j in range(n_assets))
+        var = sum(
+            cov[i][j] * x_binary[i] * x_binary[j] for i in range(n_assets) for j in range(n_assets)
+        )
         card_violation = (sum(x_binary) - B) ** 2
         return -(ret - lam * var) + penalty * card_violation
 
@@ -276,8 +291,7 @@ def _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps) -> tuple[li
 
     # Optimize variational parameters
     x0 = np.random.uniform(0, np.pi, 2 * n_reps)
-    result = scipy_minimize(objective, x0, method="COBYLA",
-                            options={"maxiter": 200, "rhobeg": 0.5})
+    result = scipy_minimize(objective, x0, method="COBYLA", options={"maxiter": 200, "rhobeg": 0.5})
 
     # Sample final circuit with optimized parameters
     gammas_opt = result.x[:n_reps]
@@ -288,9 +302,9 @@ def _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps) -> tuple[li
     counts_final = job_final.result().get_counts()
 
     # Find best bitstring (lowest cost)
-    best_bitstring = min(counts_final, key=lambda bs: qubo_cost(
-        [int(b) for b in reversed(bs.replace(" ", ""))]
-    ))
+    best_bitstring = min(
+        counts_final, key=lambda bs: qubo_cost([int(b) for b in reversed(bs.replace(" ", ""))])
+    )
     best_x = [int(b) for b in reversed(best_bitstring.replace(" ", ""))]
 
     # Convert binary to weights
@@ -313,6 +327,7 @@ def _qaoa_optimize(mu, cov, risk_aversion, n_assets, budget, n_reps) -> tuple[li
 
 def _sharpe(mu, cov, weights, rf: float = 0.05) -> float:
     import numpy as np
+
     ret = float(np.dot(weights, mu))
     vol = float(np.sqrt(np.dot(weights, np.dot(cov, weights))))
     return (ret - rf) / vol if vol > 0 else 0.0
@@ -322,12 +337,14 @@ def _portfolio_var_95(mu, cov, weights, n_days: int = 252) -> float:
     """Parametric VaR at 95% confidence, annualized."""
     import numpy as np
     from scipy.stats import norm
+
     vol = float(np.sqrt(np.dot(weights, np.dot(cov, weights))))
     z_95 = norm.ppf(0.05)
     return float(vol * z_95 / np.sqrt(n_days))  # daily VaR at 95%
 
 
 # ── Tool 2: Quantum VaR Estimation ───────────────────────────────────────────
+
 
 @mcp.tool()
 def quantum_var_estimate(
@@ -357,6 +374,7 @@ def quantum_var_estimate(
         comparison, and per-asset contribution.
     """
     import json
+
     import numpy as np
 
     ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
@@ -365,18 +383,17 @@ def quantum_var_estimate(
     try:
         weight_dict = json.loads(weights)
         w = np.array([weight_dict.get(t, 0.0) for t in ticker_list])
-        if w.sum() == 0:
-            w = np.ones(len(ticker_list)) / len(ticker_list)
-        else:
-            w = w / w.sum()
+        w = np.ones(len(ticker_list)) / len(ticker_list) if w.sum() == 0 else w / w.sum()
     except Exception:
         w = np.ones(len(ticker_list)) / len(ticker_list)
 
     # Fetch covariance
     try:
         import yfinance as yf
-        prices = yf.download(ticker_list, start=start_date, end=end_date,
-                             auto_adjust=True, progress=False)["Close"]
+
+        prices = yf.download(
+            ticker_list, start=start_date, end=end_date, auto_adjust=True, progress=False
+        )["Close"]
         returns = prices.pct_change().dropna()
         mu = returns.mean().values
         cov = returns.cov().values
@@ -385,6 +402,7 @@ def quantum_var_estimate(
 
     # ── Classical parametric VaR ──────────────────────────────────────────────
     from scipy.stats import norm
+
     port_mu = float(np.dot(w, mu)) * horizon_days
     port_vol = float(np.sqrt(np.dot(w, np.dot(cov, w)))) * np.sqrt(horizon_days)
     z = norm.ppf(1 - confidence)
@@ -396,6 +414,7 @@ def quantum_var_estimate(
 
     try:
         from scipy.stats import qmc
+
         sampler = qmc.Sobol(d=len(ticker_list), scramble=True, seed=42)
         u = sampler.random(n_scenarios // 2)
         # Transform uniform to normal via inverse CDF
@@ -430,8 +449,8 @@ def quantum_var_estimate(
     # Quantum speedup note: QAE achieves O(1/ε) vs classical O(1/ε²)
     quantum_speedup_note = (
         f"Quantum Amplitude Estimation achieves O(1/ε) complexity vs classical O(1/ε²). "
-        f"For ε={1-confidence:.2f}, theoretical speedup: {int((1/(1-confidence))**1):.0f}x "
-        f"(vs {int((1/(1-confidence))**2):.0f}x classical samples needed). "
+        f"For ε={1 - confidence:.2f}, theoretical speedup: {int((1 / (1 - confidence)) ** 1):.0f}x "
+        f"(vs {int((1 / (1 - confidence)) ** 2):.0f}x classical samples needed). "
         f"Used quantum-inspired Sobol sampling with antithetic variates."
     )
 
@@ -444,14 +463,19 @@ def quantum_var_estimate(
         "var_classical_parametric": round(var_classical, 6),
         "var_quantum_inspired": round(var_qi, 6),
         "cvar_expected_shortfall": round(cvar, 6),
-        "var_divergence_pct": round(abs(var_qi - var_classical) / max(abs(var_classical), 1e-8) * 100, 2),
+        "var_divergence_pct": round(
+            abs(var_qi - var_classical) / max(abs(var_classical), 1e-8) * 100, 2
+        ),
         "component_var": component_var,
         "quantum_speedup_note": quantum_speedup_note,
-        "backend": "quantum_inspired_sobol_mc" if not _qiskit_available() else "qiskit_amplitude_estimation",
+        "backend": "quantum_inspired_sobol_mc"
+        if not _qiskit_available()
+        else "qiskit_amplitude_estimation",
     }
 
 
 # ── Tool 3: Quantum Correlation Analysis ──────────────────────────────────────
+
 
 @mcp.tool()
 def quantum_correlation_analysis(
@@ -483,8 +507,9 @@ def quantum_correlation_analysis(
         import yfinance as yf
         from scipy.stats import spearmanr
 
-        prices = yf.download(ticker_list, start=start_date, end=end_date,
-                             auto_adjust=True, progress=False)["Close"]
+        prices = yf.download(
+            ticker_list, start=start_date, end=end_date, auto_adjust=True, progress=False
+        )["Close"]
         returns = prices.pct_change().dropna().values
         n_assets = len(ticker_list)
 
@@ -501,7 +526,7 @@ def quantum_correlation_analysis(
         for i in range(n_assets):
             for j in range(n_assets):
                 diff = returns[:, i] - returns[:, j]
-                quantum_corr[i, j] = float(np.exp(-np.mean(diff ** 2) / (2 * sigma ** 2 + 1e-10)))
+                quantum_corr[i, j] = float(np.exp(-np.mean(diff**2) / (2 * sigma**2 + 1e-10)))
 
         # Normalize to correlation scale [-1, 1]
         for i in range(n_assets):
@@ -516,15 +541,17 @@ def quantum_correlation_analysis(
             for j in range(i + 1, n_assets):
                 diff = abs(float(quantum_corr[i, j]) - float(pearson[i, j]))
                 if diff > 0.15:
-                    hidden.append({
-                        "pair": f"{ticker_list[i]}-{ticker_list[j]}",
-                        "pearson": round(float(pearson[i, j]), 3),
-                        "quantum": round(float(quantum_corr[i, j]), 3),
-                        "divergence": round(diff, 3),
-                        "interpretation": (
-                            "Quantum detects non-linear dependence not captured by Pearson"
-                        ),
-                    })
+                    hidden.append(
+                        {
+                            "pair": f"{ticker_list[i]}-{ticker_list[j]}",
+                            "pearson": round(float(pearson[i, j]), 3),
+                            "quantum": round(float(quantum_corr[i, j]), 3),
+                            "divergence": round(diff, 3),
+                            "interpretation": (
+                                "Quantum detects non-linear dependence not captured by Pearson"
+                            ),
+                        }
+                    )
 
         # Diversification score: 1 - average off-diagonal correlation (lower = better)
         off_diag = [pearson[i][j] for i in range(n_assets) for j in range(i + 1, n_assets)]
@@ -534,23 +561,32 @@ def quantum_correlation_analysis(
         def corr_dict(matrix):
             return {
                 f"{ticker_list[i]}-{ticker_list[j]}": round(float(matrix[i][j]), 3)
-                for i in range(n_assets) for j in range(i + 1, n_assets)
+                for i in range(n_assets)
+                for j in range(i + 1, n_assets)
             }
 
         return {
             "tickers": ticker_list,
             "period": f"{start_date} to {end_date}",
             "pearson_correlations": corr_dict(pearson),
-            "spearman_correlations": corr_dict(spearman) if isinstance(spearman, np.ndarray) else {},
+            "spearman_correlations": corr_dict(spearman)
+            if isinstance(spearman, np.ndarray)
+            else {},
             "quantum_kernel_correlations": corr_dict(quantum_corr),
             "hidden_correlations_detected": hidden,
             "diversification_score": diversification_score,
             "interpretation": (
                 "Diversification score 1.0 = uncorrelated, 0.0 = perfectly correlated. "
                 f"Score {diversification_score:.2f} indicates "
-                + ("good diversification" if diversification_score > 0.5 else "high correlation — review portfolio")
+                + (
+                    "good diversification"
+                    if diversification_score > 0.5
+                    else "high correlation — review portfolio"
+                )
             ),
-            "backend": "qiskit_zzfeaturemap" if _qiskit_available() else "quantum_inspired_rbf_kernel",
+            "backend": "qiskit_zzfeaturemap"
+            if _qiskit_available()
+            else "quantum_inspired_rbf_kernel",
         }
     except Exception as exc:
         logger.error("quantum_correlation_analysis failed: %s", exc)

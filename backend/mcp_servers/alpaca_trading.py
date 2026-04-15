@@ -3,6 +3,7 @@ QuantAgents — Alpaca MCP Server
 7 tools for portfolio management, orders, quotes, and positions.
 All order tools enforce a paper-trading safety gate by default.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +19,7 @@ mcp = FastMCP("alpaca")
 def _get_client(paper: bool = True):
     """Return an authenticated Alpaca TradingClient."""
     from alpaca.trading.client import TradingClient
+
     api_key = os.getenv("ALPACA_API_KEY", "")
     secret = os.getenv("ALPACA_SECRET_KEY", "")
     if not api_key or not secret:
@@ -29,6 +31,7 @@ def _get_client(paper: bool = True):
 
 def _get_data_client():
     from alpaca.data.historical import StockHistoricalDataClient
+
     return StockHistoricalDataClient(
         os.getenv("ALPACA_API_KEY", ""),
         os.getenv("ALPACA_SECRET_KEY", ""),
@@ -36,6 +39,7 @@ def _get_data_client():
 
 
 # ── Safety checks ─────────────────────────────────────────────────────────────
+
 
 def _validate_order(
     symbol: str,
@@ -59,6 +63,7 @@ def _validate_order(
 
 
 # ── Tool 1: Get Account Info ──────────────────────────────────────────────────
+
 
 @mcp.tool()
 def get_account() -> dict[str, Any]:
@@ -95,6 +100,7 @@ def get_account() -> dict[str, Any]:
 
 # ── Tool 2: Get Positions ─────────────────────────────────────────────────────
 
+
 @mcp.tool()
 def get_positions() -> dict[str, Any]:
     """
@@ -115,18 +121,20 @@ def get_positions() -> dict[str, Any]:
             unpl = float(p.unrealized_pl or 0)
             mkt_val = float(p.market_value or 0)
             total_unrealized_pl += unpl
-            pos_list.append({
-                "symbol": str(p.symbol),
-                "qty": float(p.qty or 0),
-                "side": str(p.side),
-                "avg_entry_price": float(p.avg_entry_price or 0),
-                "current_price": float(p.current_price or 0),
-                "market_value": mkt_val,
-                "cost_basis": float(p.cost_basis or 0),
-                "unrealized_pl": unpl,
-                "unrealized_plpc": float(p.unrealized_plpc or 0),
-                "portfolio_weight_pct": round(mkt_val / portfolio_value * 100, 2),
-            })
+            pos_list.append(
+                {
+                    "symbol": str(p.symbol),
+                    "qty": float(p.qty or 0),
+                    "side": str(p.side),
+                    "avg_entry_price": float(p.avg_entry_price or 0),
+                    "current_price": float(p.current_price or 0),
+                    "market_value": mkt_val,
+                    "cost_basis": float(p.cost_basis or 0),
+                    "unrealized_pl": unpl,
+                    "unrealized_plpc": float(p.unrealized_plpc or 0),
+                    "portfolio_weight_pct": round(mkt_val / portfolio_value * 100, 2),
+                }
+            )
 
         return {
             "positions": pos_list,
@@ -141,6 +149,7 @@ def get_positions() -> dict[str, Any]:
 
 # ── Tool 3: Get Quote ─────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 def get_latest_quote(ticker: str) -> dict[str, Any]:
     """
@@ -154,6 +163,7 @@ def get_latest_quote(ticker: str) -> dict[str, Any]:
     """
     try:
         from alpaca.data.requests import StockLatestQuoteRequest
+
         client = _get_data_client()
         req = StockLatestQuoteRequest(symbol_or_symbols=[ticker.upper()])
         quotes = client.get_stock_latest_quote(req)
@@ -181,6 +191,7 @@ def get_latest_quote(ticker: str) -> dict[str, Any]:
 
 # ── Tool 4: Place Market Order ────────────────────────────────────────────────
 
+
 @mcp.tool()
 def place_market_order(
     ticker: str,
@@ -201,8 +212,8 @@ def place_market_order(
     Returns:
         Dict with order_id, status, filled details, or rejection reason.
     """
-    from alpaca.trading.requests import MarketOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import MarketOrderRequest
 
     side_lower = side.lower()
     if side_lower not in ("buy", "sell"):
@@ -238,7 +249,9 @@ def place_market_order(
             "status": str(order.status),
             "submitted_at": str(order.submitted_at),
             "filled_qty": float(order.filled_qty or 0),
-            "filled_avg_price": float(order.filled_avg_price or 0) if order.filled_avg_price else None,
+            "filled_avg_price": float(order.filled_avg_price or 0)
+            if order.filled_avg_price
+            else None,
             "is_paper": os.getenv("IS_PAPER_TRADING", "true").lower() != "false",
         }
     except Exception as exc:
@@ -247,6 +260,7 @@ def place_market_order(
 
 
 # ── Tool 5: Place Limit Order ─────────────────────────────────────────────────
+
 
 @mcp.tool()
 def place_limit_order(
@@ -270,8 +284,8 @@ def place_limit_order(
     Returns:
         Dict with order_id, status, limit price.
     """
-    from alpaca.trading.requests import LimitOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import LimitOrderRequest
 
     side_lower = side.lower()
     if side_lower not in ("buy", "sell"):
@@ -286,13 +300,15 @@ def place_limit_order(
     try:
         client = _get_client()
         tif_map = {"day": TimeInForce.DAY, "gtc": TimeInForce.GTC}
-        order = client.submit_order(LimitOrderRequest(
-            symbol=ticker.upper(),
-            qty=qty,
-            side=OrderSide.BUY if side_lower == "buy" else OrderSide.SELL,
-            limit_price=limit_price,
-            time_in_force=tif_map.get(time_in_force.lower(), TimeInForce.DAY),
-        ))
+        order = client.submit_order(
+            LimitOrderRequest(
+                symbol=ticker.upper(),
+                qty=qty,
+                side=OrderSide.BUY if side_lower == "buy" else OrderSide.SELL,
+                limit_price=limit_price,
+                time_in_force=tif_map.get(time_in_force.lower(), TimeInForce.DAY),
+            )
+        )
         return {
             "order_id": str(order.id),
             "ticker": ticker.upper(),
@@ -309,6 +325,7 @@ def place_limit_order(
 
 
 # ── Tool 6: Cancel Order ──────────────────────────────────────────────────────
+
 
 @mcp.tool()
 def cancel_order(order_id: str) -> dict[str, Any]:
@@ -332,6 +349,7 @@ def cancel_order(order_id: str) -> dict[str, Any]:
 
 # ── Tool 7: Get Recent Orders ─────────────────────────────────────────────────
 
+
 @mcp.tool()
 def get_orders(status: str = "all", limit: int = 20) -> dict[str, Any]:
     """
@@ -345,8 +363,8 @@ def get_orders(status: str = "all", limit: int = 20) -> dict[str, Any]:
         Dict with orders list including fill details.
     """
     try:
-        from alpaca.trading.requests import GetOrdersRequest
         from alpaca.trading.enums import QueryOrderStatus
+        from alpaca.trading.requests import GetOrdersRequest
 
         status_map = {
             "open": QueryOrderStatus.OPEN,
@@ -361,18 +379,20 @@ def get_orders(status: str = "all", limit: int = 20) -> dict[str, Any]:
         orders = client.get_orders(req)
         order_list = []
         for o in orders:
-            order_list.append({
-                "order_id": str(o.id),
-                "symbol": str(o.symbol),
-                "side": str(o.side),
-                "type": str(o.type),
-                "qty": float(o.qty or 0),
-                "filled_qty": float(o.filled_qty or 0),
-                "filled_avg_price": float(o.filled_avg_price) if o.filled_avg_price else None,
-                "status": str(o.status),
-                "submitted_at": str(o.submitted_at),
-                "filled_at": str(o.filled_at) if o.filled_at else None,
-            })
+            order_list.append(
+                {
+                    "order_id": str(o.id),
+                    "symbol": str(o.symbol),
+                    "side": str(o.side),
+                    "type": str(o.type),
+                    "qty": float(o.qty or 0),
+                    "filled_qty": float(o.filled_qty or 0),
+                    "filled_avg_price": float(o.filled_avg_price) if o.filled_avg_price else None,
+                    "status": str(o.status),
+                    "submitted_at": str(o.submitted_at),
+                    "filled_at": str(o.filled_at) if o.filled_at else None,
+                }
+            )
         return {"orders": order_list, "count": len(order_list)}
     except Exception as exc:
         logger.error("get_orders failed: %s", exc)
